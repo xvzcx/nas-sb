@@ -13,29 +13,24 @@ def home():
     return "SYSTEM ONLINE"
 
 def run_flask():
-    # Railway provides the PORT environment variable. 
-    # This must bind to 0.0.0.0 to be visible.
+    # Railway provides the PORT environment variable.
     port = int(os.environ.get("PORT", 8080))
     app.run(host='0.0.0.0', port=port)
 
 # ─── CONFIG ───
-# Ensure this matches exactly what you put in Railway's "Variables" tab
 TOKEN = os.getenv("DISCORD_TOKEN")
 
 # ─── Bot Class ───
 class Kill(commands.Bot):
     def __init__(self, display_name="Main"):
+        # REMOVED intents=discord.Intents.all() to fix the AttributeError
         super().__init__(
             command_prefix="!",
             self_bot=True,
-            help_command=None,
-            intents=discord.Intents.all()
+            help_command=None
         )
         self.display_name = display_name
         self.spamming = False
-        self.dm_active = False
-        self.react_emoji = None
-        self.target_id = None
 
     async def on_ready(self):
         print(f"─── SESSION ACTIVE: {self.display_name} ({self.user}) ───")
@@ -73,14 +68,13 @@ def add_commands(bot: Kill):
         for _ in range(amount):
             if not bot.spamming: break
             await ctx.send(text)
-            await asyncio.sleep(0.8) # Slight delay to avoid discord rate limits
+            await asyncio.sleep(0.8) 
         bot.spamming = False
 
     @bot.command()
     async def purge(ctx, amount: int):
         await ctx.message.delete()
         def is_me(m): return m.author.id == bot.user.id
-        # Note: Purge often behaves differently on self-bots
         deleted = await ctx.channel.purge(limit=amount, check=is_me)
         await ui_send(ctx, "PURGE", f"Removed {len(deleted)} messages", "34")
 
@@ -92,8 +86,7 @@ def add_commands(bot: Kill):
 
 # ─── Execution ───
 if __name__ == "__main__":
-    # 1. Start Flask in a background thread
-    # This prevents Railway from timing out the deployment
+    # 1. Start Flask thread
     server_thread = Thread(target=run_flask)
     server_thread.daemon = True
     server_thread.start()
@@ -105,6 +98,7 @@ if __name__ == "__main__":
         master_bot = Kill()
         add_commands(master_bot)
         try:
+            # Note: discord.py-self uses your USER token
             master_bot.run(TOKEN)
         except Exception as e:
             print(f"Connection Failed: {e}")
