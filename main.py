@@ -5,12 +5,10 @@ from discord.ext import commands
 from flask import Flask
 from threading import Thread
 
-# ─── SYSTEM PULSE (Keep-alive) ───
+# ─── SYSTEM PULSE ───
 app = Flask(__name__)
-
 @app.route('/')
-def home():
-    return "SYSTEM ONLINE"
+def home(): return "SYSTEM ONLINE"
 
 def run_flask():
     port = int(os.environ.get("PORT", 8080))
@@ -22,19 +20,26 @@ TOKEN = os.getenv("DISCORD_TOKEN")
 # ─── Bot Class ───
 class Kill(commands.Bot):
     def __init__(self, display_name="Main"):
-        super().__init__(
-            command_prefix=",",
-            self_bot=True,
-            help_command=None
-            # Intents line is GONE.
-        )
+        super().__init__(command_prefix=",", self_bot=True, help_command=None)
         self.display_name = display_name
         self.spamming = False
+        # --- Auto-React Variables ---
+        self.target_id = None
+        self.react_emoji = None
 
     async def on_ready(self):
         print(f"─── SESSION ACTIVE: {self.display_name} ({self.user}) ───")
 
     async def on_message(self, message):
+        # 1. Auto-React Logic (Triggers on others)
+        if self.target_id and self.react_emoji:
+            if message.author.id == self.target_id:
+                try:
+                    await message.add_reaction(self.react_emoji)
+                except:
+                    pass
+
+        # 2. Command Logic (Only listen to you)
         if message.author.id != self.user.id:
             return
         await self.process_commands(message)
@@ -52,8 +57,15 @@ def add_commands(bot: Kill):
     @bot.command()
     async def help(ctx):
         await ctx.message.delete()
-        body = "!spam [n] [msg] | !purge [n]\n!stop"
+        body = ",spam [n] [msg] | ,purge [n]\n,react [id] [emoji] | ,stop"
         await ui_send(ctx, "COMMANDS", body, "35")
+
+    @bot.command()
+    async def react(ctx, user_id: int, emoji: str):
+        await ctx.message.delete()
+        bot.target_id = user_id
+        bot.react_emoji = emoji
+        await ui_send(ctx, "AUTO-REACT", f"Target: {user_id}\nEmoji: {emoji}", "32")
 
     @bot.command()
     async def spam(ctx, amount: int, *, text):
@@ -76,17 +88,14 @@ def add_commands(bot: Kill):
     async def stop(ctx):
         await ctx.message.delete()
         bot.spamming = False
-        await ui_send(ctx, "SYSTEM", "Operations Halted", "31")
+        bot.target_id = None # Turns off auto-react
+        bot.react_emoji = None
+        await ui_send(ctx, "SYSTEM", "All Operations Halted", "31")
 
 # ─── Execution ───
 if __name__ == "__main__":
     Thread(target=run_flask, daemon=True).start()
-    if not TOKEN:
-        print("CRITICAL: DISCORD_TOKEN is missing in Railway Variables.")
-    else:
+    if TOKEN:
         master_bot = Kill()
         add_commands(master_bot)
-        try:
-            master_bot.run(TOKEN)
-        except Exception as e:
-            print(f"Connection Failed: {e}")
+        master_bot.run(TOKEN)
