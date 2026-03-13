@@ -26,14 +26,13 @@ class Kill(commands.Bot):
         self.spamming = False
         self.target_id = None
         self.react_emoji = None
-        # --- AFK Variables ---
         self.afk_reason = None
 
     async def on_ready(self):
         print(f"─── SESSION ACTIVE: {self.display_name} ({self.user}) ───")
 
     async def on_message(self, message):
-        # 1. AFK Auto-Responder
+        # 1. AFK Auto-Responder (Triggered when you are mentioned)
         if self.afk_reason and self.user.mentioned_in(message) and message.author.id != self.user.id:
             try:
                 await message.channel.send(f"**[AFK]** {self.afk_reason}", delete_after=10)
@@ -48,24 +47,23 @@ class Kill(commands.Bot):
                 except:
                     pass
         
-        # 3. Process Commands (Only from you)
+        # 3. Process Commands and Self-Activity
         if message.author.id != self.user.id:
             return
 
-        # 4. Auto-Disable AFK if you type anything
-        if self.afk_reason:
+        # 4. Auto-Disable AFK (Fixed: Won't trigger on commands)
+        if self.afk_reason and not message.content.startswith(self.command_prefix):
             self.afk_reason = None
             await ui_send(message.channel, "SYSTEM", "Welcome back! AFK removed.", "32")
 
         await self.process_commands(message)
 
-# ─── UI Helper ───
+# ─── UI Helper (5s delete) ───
 async def ui_send(ctx, title, body, color="34"):
     ui = (f"```ansi\n[1;{color}m[ {title} ][0m\n"
           f"[1;30m────────────────────────────────[0m\n"
           f"{body}\n"
           f"[1;30m────────────────────────────────[0m\n```")
-    # Using ctx.channel.send if ctx is a channel (for the auto-welcome back)
     dest = ctx.channel if hasattr(ctx, 'channel') else ctx
     await dest.send(ui, delete_after=5)
 
