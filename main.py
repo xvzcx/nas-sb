@@ -18,12 +18,13 @@ def run_flask():
     app.run(host='0.0.0.0', port=port)
 
 # ─── CONFIG ───
+# Make sure "DISCORD_TOKEN" is in your Railway Variables tab!
 TOKEN = os.getenv("DISCORD_TOKEN")
 
 # ─── Bot Class ───
 class Kill(commands.Bot):
     def __init__(self, display_name="Main"):
-        # REMOVED intents=discord.Intents.all() to fix the AttributeError
+        # We removed intents entirely here to fix the AttributeError
         super().__init__(
             command_prefix="!",
             self_bot=True,
@@ -86,7 +87,7 @@ def add_commands(bot: Kill):
 
 # ─── Execution ───
 if __name__ == "__main__":
-    # 1. Start Flask thread
+    # 1. Start Flask in a background thread
     server_thread = Thread(target=run_flask)
     server_thread.daemon = True
     server_thread.start()
@@ -98,7 +99,6 @@ if __name__ == "__main__":
         master_bot = Kill()
         add_commands(master_bot)
         try:
-            # Note: discord.py-self uses your USER token
             master_bot.run(TOKEN)
         except Exception as e:
             print(f"Connection Failed: {e}")
