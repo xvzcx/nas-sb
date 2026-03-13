@@ -62,7 +62,7 @@ def add_commands(bot: Kill):
         for _ in range(amount):
             if not bot.spamming: break
             await ctx.send(text)
-            await asyncio.sleep(0.8) 
+            await asyncio.sleep(0.4) 
         bot.spamming = False
 
     @bot.command()
