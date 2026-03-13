@@ -23,7 +23,7 @@ TOKEN = os.getenv("DISCORD_TOKEN")
 class Kill(commands.Bot):
     def __init__(self, display_name="Main"):
         super().__init__(
-            command_prefix="!",
+            command_prefix=",",
             self_bot=True,
             help_command=None
             # Intents line is GONE.
