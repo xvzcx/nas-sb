@@ -50,7 +50,7 @@ async def ui_send(ctx, title, body, color="34"):
           f"[1;30m────────────────────────────────[0m\n"
           f"{body}\n"
           f"[1;30m────────────────────────────────[0m\n```")
-    await ctx.send(ui, delete_after=10)
+    await ctx.send(ui, delete_after=5)
 
 # ─── Command Registration ───
 def add_commands(bot: Kill):
