@@ -75,39 +75,19 @@ class Kill(commands.Bot):
 
 bot = Kill()
 
-async def ui_send(ctx, title, body, footer="Selfbot v3.8", color="34"):
-    ui_box = f"```ansi\n[1;{color}m┏━ [ {title} ] ━┓[0m\n{body}\n[1;30m┗━ {footer} ━┛[0m\n```"
+async def ui_send(ctx, title, body, footer="Selfbot v3.9", color="34"):
+    ui_box = f"```ansi\n[1;{color}m┏━━ [ {title} ] ━━┓[0m\n{body}\n[1;30m┗━━ {footer} ━━┛[0m\n```"
     try: await ctx.send(ui_box, delete_after=10)
     except: await ctx.send(f"**[{title}]** {body}")
 
-# ─── TURBO UTILITY ───
-
-@bot.command()
-async def spam(ctx, n: int, *, text):
-    bot.spamming = True
-    for _ in range(n):
-        if not bot.spamming: break
-        await ctx.send(text)
-        await asyncio.sleep(0.4) # Turbo speed: ~2.5 messages per second
-
-@bot.command()
-async def purge(ctx, n: int):
-    await ctx.message.delete()
-    async for msg in ctx.channel.history(limit=n):
-        if msg.author.id == bot.user.id:
-            try: 
-                await msg.delete()
-                # 0.05 is almost instant but prevents the Discord client from lagging out
-                await asyncio.sleep(0.05) 
-            except: pass
-
-# ─── NEW HELP SYSTEM ───
+# ─── CLEAN HELP SYSTEM ───
 
 @bot.command()
 async def help(ctx, category=None):
     if not category:
-        body = "[1;34m,help status[0m - Profile & RPC\n[1;35m,help social[0m - Trolling & Reacts\n[1;31m,help util[0m - Spam & Purge"
-        return await ui_send(ctx, "MAIN HELP", body, "Select a Category", "37")
+        # Descriptions removed per request
+        body = "[1;34m,help status[0m\n[1;35m,help social[0m\n[1;31m,help util[0m"
+        return await ui_send(ctx, "HELP MENU", body, "Select Category", "37")
     
     cat = category.lower()
     if cat == "status":
@@ -120,7 +100,27 @@ async def help(ctx, category=None):
         body = "`,spam [n] [t]` | `,purge [n]`\n`,afk [reason]` | `,ping` | `,stop`"
         await ui_send(ctx, "HELP: UTILITY", body, "Power Tools", "31")
 
-# ─── REST OF THE ARSENAL ───
+# ─── TURBO SPEED UTILITY ───
+
+@bot.command()
+async def spam(ctx, n: int, *, text):
+    bot.spamming = True
+    for _ in range(n):
+        if not bot.spamming: break
+        await ctx.send(text)
+        await asyncio.sleep(0.4) 
+
+@bot.command()
+async def purge(ctx, n: int):
+    await ctx.message.delete()
+    async for msg in ctx.channel.history(limit=n):
+        if msg.author.id == bot.user.id:
+            try: 
+                await msg.delete()
+                await asyncio.sleep(0.05) 
+            except: pass
+
+# ─── THE ARSENAL ───
 
 @bot.command()
 async def addstatus(ctx, *, t):
