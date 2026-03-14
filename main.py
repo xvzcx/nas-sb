@@ -29,7 +29,7 @@ class Kill(commands.Bot):
         self.afk_log = []
         self.mock_target = None
         self.uwu_target = None
-        self.react_target = None
+        self.react_target_id = None # Storing ID directly for speed
         self.react_emoji = None
         self.status_dot = discord.Status.online
         self.rotating_bio = False
@@ -53,13 +53,13 @@ class Kill(commands.Bot):
                 self.update_bio(text)
                 await asyncio.sleep(30)
 
-    # ─── ERROR HANDLER ───
     async def on_command_error(self, ctx, error):
         if isinstance(error, commands.MissingRequiredArgument):
             usage = f"{ctx.prefix}{ctx.command.name} {ctx.command.signature}"
             await ui_send(ctx, "ARGUMENT ERROR", f"Missing: **{error.param.name}**\nUsage: `{usage}`", "FIX INPUT", "31")
 
     async def on_message(self, message):
+        # 1. Handle Self Commands
         if message.author.id == self.user.id:
             await self.process_commands(message)
             if self.afk_reason and not message.content.startswith(self.command_prefix):
@@ -69,16 +69,19 @@ class Kill(commands.Bot):
                     self.afk_reason, self.afk_pings, self.afk_log = None, 0, []
             return
 
-        # Social Automation
-        if self.react_target and message.author.id == self.react_target:
+        # 2. Automation Logic (Others)
+        if self.react_target_id and message.author.id == self.react_target_id:
             try: await message.add_reaction(self.react_emoji)
             except: pass
+
         if self.mock_target and message.author.id == self.mock_target:
             try: await message.channel.send("".join([c.upper() if i % 2 == 0 else c.lower() for i, c in enumerate(message.content)]))
             except: pass
+
         if self.uwu_target and message.author.id == self.uwu_target:
             try: await message.channel.send(message.content.replace('L','W').replace('R','W').replace('l','w').replace('r','w') + " uwu")
             except: pass
+
         if self.afk_reason and self.user.mentioned_in(message):
             self.afk_pings += 1
             self.afk_log.append(f"**{message.author}** in #{message.channel}")
@@ -93,12 +96,12 @@ async def ui_send(ctx, title, body, footer="Selfbot", color="34"):
 
 bot = Kill()
 
-# ─── HELP PAGES ───
+# ─── HELP ───
 @bot.command()
 async def help(ctx, category=None):
     if not category:
         body = "[1;34m,help utility[0m\n[1;35m,help status[0m\n[1;31m,help social[0m"
-        await ui_send(ctx, "HELP MENU", body, "v1.5", "37")
+        await ui_send(ctx, "HELP MENU", body, "v1.6", "37")
     elif category.lower() == "utility":
         body = "[1;37m,purge [n][0m | [1;37m,spam [n] [t][0m\n[1;37m,afk [r][0m | [1;37m,ping[0m | [1;37m,stop[0m"
         await ui_send(ctx, "UTILITY", body, "Turbo Mode", "34")
@@ -106,7 +109,7 @@ async def help(ctx, category=None):
         body = "[1;37m,addbio [t][0m | [1;37m,rotatebio [on/off][0m\n[1;37m,rpc [t][0m | [1;37m,clear[0m | [1;37m,dot [mode][0m"
         await ui_send(ctx, "STATUS", body, "Profiles", "35")
     elif category.lower() == "social":
-        body = "[1;37m,mock [@u][0m | [1;37m,uwu [@u][0m\n[1;37m,react [@u] [emoji][0m | [1;37m,unmock[0m"
+        body = "[1;37m,mock [@u][0m | [1;37m,uwu [@u][0m\n[1;37m,autoreact [@u] [e][0m | [1;37m,stopreact[0m"
         await ui_send(ctx, "SOCIAL", body, "Automation", "31")
 
 # ─── TURBO COMMANDS ───
@@ -135,17 +138,46 @@ async def spam(ctx, amount: int, *, text: str):
         except: break
     bot.spamming = False
 
-# ─── STATUS & RPC ───
+# ─── SOCIAL AUTOMATION ───
+@bot.command()
+async def autoreact(ctx, target: discord.User, emoji: str):
+    bot.react_target_id = target.id
+    bot.react_emoji = emoji
+    await ui_send(ctx, "AUTOREACT", f"Stalking: {target.name}\nEmoji: {emoji}", "LOCKED", "32")
+
+@bot.command()
+async def stopreact(ctx):
+    bot.react_target_id = None
+    bot.react_emoji = None
+    await ui_send(ctx, "AUTOREACT", "Reaction stalking disabled.", "OFF", "31")
+
+@bot.command()
+async def mock(ctx, target: discord.User):
+    bot.mock_target = target.id
+    bot.uwu_target = None
+    await ui_send(ctx, "MOCK", f"Targeting: {target.name}", "ACTIVE", "31")
+
+@bot.command()
+async def uwu(ctx, target: discord.User):
+    bot.uwu_target = target.id
+    bot.mock_target = None
+    await ui_send(ctx, "UWU", f"Targeting: {target.name}", "ACTIVE", "35")
+
+@bot.command()
+async def unmock(ctx):
+    bot.mock_target = bot.uwu_target = None
+    await ui_send(ctx, "SOCIAL", "Mock/UwU disabled.", "CLEARED", "32")
+
+# ─── STATUS & SYSTEM ───
+@bot.command()
+async def clear(ctx):
+    await bot.change_presence(activity=None, status=bot.status_dot)
+    await ui_send(ctx, "STATUS", "RPC Cleared.", "CLEAN", "32")
+
 @bot.command()
 async def rpc(ctx, *, text: str):
     await bot.change_presence(activity=discord.Streaming(name=text, url="https://twitch.tv/discord"), status=bot.status_dot)
-    await ui_send(ctx, "RPC", f"Streaming: {text}", "RPC SET", "35")
-
-@bot.command()
-async def clear(ctx):
-    """Clears RPC and Custom Status"""
-    await bot.change_presence(activity=None, status=bot.status_dot)
-    await ui_send(ctx, "STATUS", "RPC and Status Cleared.", "CLEAN", "32")
+    await ui_send(ctx, "RPC", f"Streaming: {text}", "SET", "35")
 
 @bot.command()
 async def dot(ctx, mode: str):
@@ -154,31 +186,6 @@ async def dot(ctx, mode: str):
     await bot.change_presence(status=bot.status_dot)
     await ui_send(ctx, "DOT", f"Status: {mode.upper()}", "UPDATED", "34")
 
-# ─── SOCIAL ───
-@bot.command()
-async def react(ctx, target: discord.User, emoji: str):
-    bot.react_target = target.id
-    bot.react_emoji = emoji
-    await ui_send(ctx, "REACT", f"Stalking: {target.name}\nEmoji: {emoji}", "LOCKED", "32")
-
-@bot.command()
-async def mock(ctx, target: discord.User):
-    bot.mock_target = target.id
-    bot.uwu_target = None
-    await ui_send(ctx, "MOCK", f"Target: {target.name}", "TROLLING", "31")
-
-@bot.command()
-async def uwu(ctx, target: discord.User):
-    bot.uwu_target = target.id
-    bot.mock_target = None
-    await ui_send(ctx, "UWU", f"Target: {target.name}", "CUTE", "35")
-
-@bot.command()
-async def unmock(ctx):
-    bot.mock_target = bot.uwu_target = bot.react_target = None
-    await ui_send(ctx, "SOCIAL", "All targets cleared.", "CLEARED", "32")
-
-# ─── SYSTEM ───
 @bot.command()
 async def ping(ctx):
     await ui_send(ctx, "PONG", f"{round(bot.latency * 1000)}ms", "Active", "32")
@@ -206,7 +213,7 @@ async def rotatebio(ctx, toggle: str):
 @bot.command()
 async def stop(ctx):
     bot.spamming = bot.rotating_bio = False
-    bot.mock_target = bot.uwu_target = bot.afk_reason = bot.react_target = None
+    bot.mock_target = bot.uwu_target = bot.afk_reason = bot.react_target_id = None
     await bot.change_presence(activity=None)
     await ui_send(ctx, "STOP", "All tasks killed.", "HALT", "31")
 
