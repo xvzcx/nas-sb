@@ -49,19 +49,14 @@ async def on_message(message):
         bot.afk_log.append(log_entry)
         await message.channel.send(f"**[AFK]** {bot.afk_reason}", delete_after=5)
 
-    # STICKY AR ENGINE (FIXED: Handling both custom and standard emojis)
+    # STICKY AR ENGINE
     if uid in bot.targets:
         emojis = bot.targets[uid]
         for e in emojis:
             try:
-                # Check if it's a custom emoji format <:name:id> or <a:name:id>
-                custom_emoji = re.search(r'<(a?):(\w+):(\d+)>', e)
-                if custom_emoji:
-                    await message.add_reaction(e.strip())
-                else:
-                    await message.add_reaction(e.strip())
-                await asyncio.sleep(0.05) 
-            except: 
+                await message.add_reaction(e.strip())
+                await asyncio.sleep(0.1)
+            except:
                 continue
 
     # TROLLING LOGIC
@@ -157,74 +152,34 @@ async def ping(ctx):
 # ─── SOCIAL COMMANDS ───
 
 @bot.command(aliases=['ar'])
-async def autoreact(ctx, *, args=None):
-    """Sets AR. Usage: ,ar @user emojis OR reply to message with ,ar emojis"""
-    target = None
-    emojis_str = ""
-
-    if ctx.message.reference:
-        ref = await ctx.channel.fetch_message(ctx.message.reference.message_id)
-        target = ref.author
-        emojis_str = args if args else "🔥"
-    elif args:
-        # Check for user mentions or IDs
-        user_match = re.search(r'<@!?(\d+)>|(\d{17,20})', args)
-        if user_match:
-            uid = int(user_match.group(1) or user_match.group(2))
-            target = bot.get_user(uid) or await bot.fetch_user(uid)
-            # Remove ONLY the user part, leave everything else (emojis)
-            emojis_str = args.replace(user_match.group(0), "").strip()
-        elif args.lower().startswith("me"):
-            target = bot.user
-            emojis_str = args[2:].strip()
-
-    if target:
-        # Final cleanup: split by whitespace but keep custom emoji blocks intact
-        # This regex matches custom emojis OR single characters (standard emojis)
-        emojis = re.findall(r'<a?:\w+:\d+>|\S', emojis_str)
-        
-        if not emojis:
-            emojis = ["🔥"]
-            
-        bot.targets[target.id] = emojis 
-        await ctx.send(ui("32", "AR ADDED", f"User: [1;32m{target.name}[0m\nReacts: {' '.join(emojis)}"), delete_after=4)
-    else:
-        await ctx.send(ui("31", "ERROR", "Reply to a message or mention a user."), delete_after=3)
+async def autoreact(ctx, *, args):
+    """Usage: ,ar @user emojis"""
+    try:
+        user = ctx.message.mentions[0]
+        emojis = args.replace(f"<@{user.id}>", "").replace(f"<@!{user.id}>", "").strip().split()
+        bot.targets[user.id] = emojis
+        await ctx.send(ui("32", "AR ADDED", f"User: [1;32m{user.name}[0m\nReacts: {' '.join(emojis)}"), delete_after=5)
+    except:
+        await ctx.send(ui("31", "ERROR", "Usage: `,ar @user [emojis]`"), delete_after=3)
 
 @bot.command()
-async def stopreact(ctx, *, args=None):
-    """Stops reacting to a user. Usage: ,stopreact @user or reply."""
-    if args and "all" in args.lower():
-        bot.targets = {}
-        return await ctx.send(ui("31", "AR CLEARED", "All targets removed."), delete_after=3)
-    
-    tid = None
-    if ctx.message.reference:
-        ref = await ctx.channel.fetch_message(ctx.message.reference.message_id)
-        tid = ref.author.id
-    elif args:
-        match = re.search(r'\d+', args)
-        if match: tid = int(match.group())
-
-    if tid and tid in bot.targets:
-        bot.targets.pop(tid)
-        await ctx.send(ui("31", "AR REMOVED", f"Stopped: {tid}"), delete_after=3)
-    else:
-        await ctx.send(ui("31", "ERROR", "Target not found in AR list."), delete_after=3)
+async def stopreact(ctx, user: discord.User):
+    if user.id in bot.targets:
+        bot.targets.pop(user.id)
+        await ctx.send(ui("31", "AR REMOVED", f"Stopped: [1;31m{user.name}[0m"), delete_after=3)
 
 @bot.command()
 async def targets(ctx):
-    """Lists current AR targets."""
     if not bot.targets:
         return await ctx.send(ui("34", "AR LIST", "Registry empty."), delete_after=5)
     
     lines = []
     for tid, emojis in bot.targets.items():
-        user = bot.get_user(tid)
-        name = user.name if user else f"User({tid})"
-        lines.append(f"[1;30m•[0m [1;34m{name}[0m [1;30m»[0m {' '.join(emojis)}")
+        u = bot.get_user(tid)
+        name = u.name if u else tid
+        lines.append(f"[1;34m{name}[0m: {' '.join(emojis)}")
     
-    await ctx.send(ui("34", "REGISTRY", "\n".join(lines)), delete_after=10)
+    await ctx.send(ui("34", "TARGETS", "\n".join(lines)), delete_after=10)
 
 @bot.command()
 async def uwu(ctx, *, args=None):
