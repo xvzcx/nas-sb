@@ -150,37 +150,25 @@ async def autoreact(ctx, *, args):
 
 @bot.command(aliases=['mr'])
 async def multireact(ctx, *, args):
-    """Reacts multiple emojis to the replied-to message or a user's last message"""
+    """Alias for sticky Auto-React (Following the user)"""
     try:
-        # Determine target message
-        target_msg = None
         if ctx.message.reference:
-            target_msg = await ctx.channel.fetch_message(ctx.message.reference.message_id)
+            ref = await ctx.channel.fetch_message(ctx.message.reference.message_id)
+            user = ref.author
             emojis = args.split()
         else:
-            # If no reply, check if there's a mention and use their last message
             user = ctx.message.mentions[0]
             emojis = args.replace(f"<@{user.id}>", "").replace(f"<@!{user.id}>", "").strip().split()
-            async for m in ctx.channel.history(limit=50):
-                if m.author.id == user.id:
-                    target_msg = m
-                    break
         
-        if target_msg:
-            await ctx.message.delete()
-            for e in emojis:
-                try: await target_msg.add_reaction(e.strip())
-                except: continue
-        else:
-            await ctx.send(ui("31", "ERROR", "Reply to a message or mention a user."), delete_after=3)
+        bot.targets[user.id] = emojis
+        await ctx.send(ui("32", "MULTI-REACT", f"Now following: [1;32m{user.name}[0m\nReacts: {' '.join(emojis)}"), delete_after=5)
     except:
-        await ctx.send(ui("31", "ERROR", "Usage: `,mr [emojis]` (reply) or `,mr @u [emojis]`"), delete_after=3)
+        await ctx.send(ui("31", "ERROR", "Reply to user or mention them with emojis."), delete_after=3)
 
 @bot.command()
 async def stopreact(ctx, *, args=None):
     """Stops AR for a user. Usage: ,stopreact @user or ,stopreact [id] or ,stopreact all"""
     if not args:
-        # If no args, try to check if it's a reply
         if ctx.message.reference:
             ref = await ctx.channel.fetch_message(ctx.message.reference.message_id)
             tid = ref.author.id
@@ -193,13 +181,11 @@ async def stopreact(ctx, *, args=None):
         bot.targets = {}
         return await ctx.send(ui("31", "AR CLEARED", "All targets removed."), delete_after=3)
 
-    # Try mention
     if ctx.message.mentions:
         user = ctx.message.mentions[0]
         if user.id in bot.targets:
             bot.targets.pop(user.id)
             await ctx.send(ui("31", "AR REMOVED", f"Stopped: [1;31m{user.name}[0m"), delete_after=3)
-    # Try raw ID
     else:
         try:
             uid = int(args.strip())
@@ -211,7 +197,7 @@ async def stopreact(ctx, *, args=None):
 
 @bot.command()
 async def reactlog(ctx):
-    """Alias for targets, showing active AR tracks"""
+    """Shows active AR tracks"""
     if not bot.targets:
         return await ctx.send(ui("34", "REACT LOG", "No active tracks."), delete_after=5)
     
