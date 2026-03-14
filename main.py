@@ -3,6 +3,7 @@ import asyncio
 import os
 import re
 import time
+import random
 from discord.ext import commands
 from flask import Flask
 from threading import Thread
@@ -31,6 +32,7 @@ class Kill(commands.Bot):
         self.status_messages = []
         self.status_dot = discord.Status.online
         self.dm_running = False
+        self.mock_target = None
 
     async def on_ready(self):
         print(f"─── SESSION ACTIVE: {self.user} ───")
@@ -47,19 +49,25 @@ class Kill(commands.Bot):
                 await asyncio.sleep(5)
 
     async def on_message(self, message):
-        # 1. AFK Responder
+        # 1. Mocking Logic
+        if self.mock_target and message.author.id == self.mock_target:
+            mocked_text = "".join([char.upper() if random.random() > 0.5 else char.lower() for char in message.content])
+            try: await message.channel.send(mocked_text)
+            except: pass
+
+        # 2. AFK Responder
         if self.afk_reason and self.user.mentioned_in(message) and message.author.id != self.user.id:
             try:
                 await message.channel.send(f"**[AFK]** {self.afk_reason}", delete_after=10)
                 return 
             except: pass
 
-        # 2. Auto-React
+        # 3. Auto-React
         if self.target_id and self.react_emoji and message.author.id == self.target_id:
             try: await message.add_reaction(self.react_emoji)
             except: pass
         
-        # 3. Self-Command / AFK Clear Logic
+        # 4. Command & AFK Management
         if message.author.id == self.user.id:
             if message.content.startswith("**[AFK]**"): return
             if message.content.startswith(self.command_prefix):
@@ -88,7 +96,7 @@ def add_commands(bot: Kill):
             title = "HELP MENU"
             body = ("[1;34m,help utility[0m - Tools & AFK\n"
                     "[1;35m,help status[0m  - RPC & Dot\n"
-                    "[1;31m,help social[0m  - DMs & React")
+                    "[1;31m,help social[0m  - DMs & Fun")
             footer = "Type a category name"
             color = "37"
         elif category.lower() == "utility":
@@ -109,14 +117,24 @@ def add_commands(bot: Kill):
             color = "35"
         elif category.lower() == "social":
             title = "SOCIAL CMDS"
-            body = ("[1;37m,massdm [msg][0m - DM friends\n"
-                    "[1;37m,stopdm[0m       - Stop DMs\n"
-                    "[1;37m,react [@u][0m   - Auto-emoji\n"
+            body = ("[1;37m,mock [@u][0m    - Mock a user\n"
+                    "[1;37m,unmock[0m       - Stop mocking\n"
+                    "[1;37m,massdm [msg][0m - DM friends\n"
                     "[1;37m,spam [n] [t][0m - Message spam")
             footer = "Category: Social"
             color = "31"
         else: return await ui_send(ctx, "ERROR", "Invalid Category", "!", "31")
         await ui_send(ctx, title, body, footer, color)
+
+    @bot.command()
+    async def mock(ctx, target: str):
+        bot.mock_target = int(re.search(r'\d+', target).group())
+        await ui_send(ctx, "MOCK", f"Mocking: <@{bot.mock_target}>", "TROLLING", "31")
+
+    @bot.command()
+    async def unmock(ctx):
+        bot.mock_target = None
+        await ui_send(ctx, "MOCK", "Stopped mocking.", "CLEARED", "32")
 
     @bot.command()
     async def ping(ctx):
@@ -164,7 +182,7 @@ def add_commands(bot: Kill):
     @bot.command()
     async def massdm(ctx, *, message: str):
         bot.dm_running = True
-        await ui_send(ctx, "MASS DM", "Starting DM Loop...", "RUNNING", "33")
+        await ui_send(ctx, "MASS DM", "Starting...", "RUNNING", "33")
         for friend in bot.user.friends:
             if not bot.dm_running: break
             try:
@@ -172,7 +190,7 @@ def add_commands(bot: Kill):
                 await asyncio.sleep(5)
             except: pass
         bot.dm_running = False
-        await ui_send(ctx, "MASS DM", "Finished.", "DONE", "32")
+        await ui_send(ctx, "MASS DM", "Done.", "DONE", "32")
 
     @bot.command()
     async def spam(ctx, amount: int, *, text: str):
@@ -192,9 +210,9 @@ def add_commands(bot: Kill):
     @bot.command()
     async def stop(ctx):
         bot.dm_running = bot.rotating_status = bot.spamming = False
-        bot.target_id = bot.afk_reason = None
+        bot.target_id = bot.afk_reason = bot.mock_target = None
         await bot.change_presence(activity=None)
-        await ui_send(ctx, "SYSTEM", "All Tasks Killed.", "HALT", "31")
+        await ui_send(ctx, "SYSTEM", "Killed all tasks.", "HALT", "31")
 
 # ─── Execution ───
 if __name__ == "__main__":
@@ -203,3 +221,4 @@ if __name__ == "__main__":
         master_bot = Kill()
         add_commands(master_bot)
         master_bot.run(TOKEN)
+    
