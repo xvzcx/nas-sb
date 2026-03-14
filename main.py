@@ -17,38 +17,39 @@ bot.spamming = False
 bot.mock_target = None
 bot.uwu_target = None
 bot.afk_reason = None
+bot.afk_log = [] # Stores ping history
 bot.status_messages = []
 bot.rotating_status = False
 
 @bot.event
 async def on_ready():
-    print(f"─── {bot.user} v6.5 GHOST-PROOF ACTIVE ───")
+    print(f"─── {bot.user} v6.6 SENTINEL ACTIVE ───")
 
 @bot.event
 async def on_message(message):
     await bot.process_commands(message)
     uid = int(message.author.id)
     
-    # ─── RE-ENGINEERED AFK LOGIC ───
+    # ─── SECURE AFK LOGIC ───
     if message.author.id == bot.user.id:
         if bot.afk_reason:
-            # GATE 1: Ignore commands
-            if message.content.startswith(bot.command_prefix):
-                return
-            # GATE 2: Ignore the bot's own UI boxes
-            if "┏━" in message.content or "┛" in message.content:
+            # Ignore commands and bot's own UI
+            if message.content.startswith(bot.command_prefix) or "┏━" in message.content:
                 return
             
-            # If it passed both gates, it's a real message—turn off AFK
+            # Disable AFK only on a real outgoing message
             bot.afk_reason = None
             await message.channel.send("`[AFK]` Disabled. Welcome back.", delete_after=3)
         return
 
-    # PING RESPONDER
-    if bot.afk_reason and bot.user.mentioned_in(message):
+    # ─── PING TRACKER (Does NOT disable AFK) ───
+    if bot.afk_reason and bot.user.mentioned_in(message) and not message.mention_everyone:
+        timestamp = time.strftime("%H:%M:%S", time.localtime())
+        log_entry = f"[1;30m[{timestamp}][0m [1;34m{message.author.name}[0m [1;30min[0m #{message.channel}"
+        bot.afk_log.append(log_entry)
         await message.channel.send(f"**[AFK]** {bot.afk_reason}", delete_after=5)
 
-    # MULTI-STICK AR
+    # ─── MULTI-STICK AR ───
     if uid in bot.targets:
         if not message.content.startswith(bot.command_prefix):
             for e in bot.targets[uid]:
@@ -57,7 +58,7 @@ async def on_message(message):
                     await asyncio.sleep(0.05) 
                 except: pass
 
-    # TROLLING
+    # ─── TROLLING ───
     if uid != int(bot.user.id):
         if bot.mock_target == uid:
             await message.channel.send("".join([c.upper() if i%2==0 else c.lower() for i,c in enumerate(message.content)]))
@@ -76,12 +77,24 @@ def ui(color, title, text):
         f"```"
     )
 
+# ─── AFK COMMANDS ───
+
 @bot.command()
 async def afk(ctx, *, reason="Away"):
     bot.afk_reason = reason
+    bot.afk_log = [] # Reset log for new session
     await ctx.send(ui("33", "AFK", f"Status: [1;33mENABLED[0m\nReason: {reason}"), delete_after=5)
 
-# ─── REST OF CMDS ───
+@bot.command()
+async def afklog(ctx):
+    if not bot.afk_log:
+        return await ctx.send(ui("34", "AFK LOG", "No pings recorded."), delete_after=5)
+    
+    # Show last 10 pings
+    history = "\n".join(bot.afk_log[-10:])
+    await ctx.send(ui("34", "AFK LOG", history), delete_after=15)
+
+# ─── UPDATED HELP ───
 
 @bot.command()
 async def help(ctx, cat=None):
@@ -91,7 +104,7 @@ async def help(ctx, cat=None):
     
     c = cat.lower()
     if c == "status":
-        body = "[1;30m▸[0m `,afk [reason]` [1;30m▸[0m `,rpc`\n[1;30m▸[0m `,addstatus`    [1;30m▸[0m `,dot`\n[1;30m▸[0m `,rotatestatus` [1;30m▸[0m `,clearstatus`"
+        body = "[1;30m▸[0m `,afk [r]`     [1;30m▸[0m `,afklog`\n[1;30m▸[0m `,addstatus`   [1;30m▸[0m `,dot`\n[1;30m▸[0m `,rotatestatus` [1;30m▸[0m `,clearstatus`"
         await ctx.send(ui("34", "STATUS", body), delete_after=8)
     elif c == "social":
         body = "[1;30m▸[0m `,ar @u [e]`  [1;30m▸[0m `,targets`\n[1;30m▸[0m `,stopreact`  [1;30m▸[0m `,mock @u`\n[1;30m▸[0m `,uwu @u`      [1;30m▸[0m `,stop`"
@@ -104,6 +117,7 @@ async def help(ctx, cat=None):
 async def stop(ctx):
     bot.spamming = bot.rotating_status = False
     bot.targets = {}; bot.mock_target = bot.uwu_target = bot.afk_reason = None
+    bot.afk_log = []
     await ctx.send(ui("31", "HALT", "[1;31mAll tasks killed.[0m"), delete_after=3)
 
 if __name__ == "__main__":
