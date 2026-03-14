@@ -17,22 +17,19 @@ bot.targets = {}       # {int_id: [emoji_list]}
 bot.spamming = False
 bot.mock_target = None
 bot.uwu_target = None
-bot.afk_reason = None
 
 @bot.event
 async def on_ready():
-    print(f"─── {bot.user} v5.9 STABLE ───")
+    print(f"─── {bot.user} ACTIVE ───")
 
 @bot.event
 async def on_message(message):
-    # CRITICAL: Always process commands first
     await bot.process_commands(message)
 
-    # ─── THE FIX: FORCED INT COMPARISON ───
     author_id = int(message.author.id)
     
+    # MULTI-AR LOGIC
     if author_id in bot.targets:
-        # Don't react to commands starting with ,
         if not message.content.startswith(","):
             for e in bot.targets[author_id]:
                 try: 
@@ -41,48 +38,63 @@ async def on_message(message):
                 except: 
                     pass
 
-    # Trolling (Others Only)
+    # TROLLING LOGIC
     if author_id != int(bot.user.id):
         if bot.mock_target == author_id:
             await message.channel.send("".join([c.upper() if i%2==0 else c.lower() for i,c in enumerate(message.content)]))
 
 def ui(color, title, text):
-    return f"```ansi\n[1;{color}m┏━━ [ {title} ] ━━┓[0m\n{text}\n[1;30m┗━━ v5.9 ━━┛[0m\n```"
+    # Removed version number from footer
+    return f"```ansi\n[1;{color}m┏━━ [ {title} ] ━━┓[0m\n{text}\n[1;30m┗━━━━━━━━━━━━━━━━┛[0m\n```"
 
-# ─── AR COMMANDS (FORCED INTEGERS) ───
+# ─── AR COMMANDS (NAME-BASED) ───
 
 @bot.command(aliases=['ar'])
 async def autoreact(ctx, *, args=None):
-    target_id = None
+    target = None
     
     if ctx.message.reference:
         ref = await ctx.channel.fetch_message(ctx.message.reference.message_id)
-        target_id = int(ref.author.id)
+        target = ref.author
         raw_emojis = args if args else "🔥"
     elif args:
         if "me" in args.lower():
-            target_id = int(bot.user.id)
+            target = bot.user
             raw_emojis = args.lower().replace("me", "").strip()
         else:
             id_match = re.search(r'\d+', args)
             if id_match:
-                target_id = int(id_match.group())
+                # Try to get member from cache/fetch
+                uid = int(id_match.group())
+                target = bot.get_user(uid) or await bot.fetch_user(uid)
                 raw_emojis = re.sub(r'<@!?\d+>', '', args).strip()
 
-    if target_id:
+    if target:
         emojis = raw_emojis.split() if raw_emojis else ["🔥"]
-        # Save as INT to ensure comparison works
-        bot.targets[int(target_id)] = emojis 
-        await ctx.send(ui("32", "AR ADDED", f"ID: {target_id}\nTotal Active: {len(bot.targets)}"))
+        bot.targets[int(target.id)] = emojis 
+        # Displays the Name instead of the ID
+        await ctx.send(ui("32", "AR ADDED", f"Target: {target.name}\nActive: {len(bot.targets)}"))
     else:
-        await ctx.send(ui("31", "ERROR", "Mention someone or reply."))
+        await ctx.send(ui("31", "ERROR", "Could not find user."))
+
+@bot.command()
+async def targets(ctx):
+    if not bot.targets: return await ctx.send(ui("34", "AR", "Empty."))
+    
+    lines = []
+    for tid, emojis in bot.targets.items():
+        # Try to resolve name for the list
+        user = bot.get_user(tid)
+        name = user.name if user else tid # Fallback to ID if name not found
+        lines.append(f"[1;34m{name}[0m: {' '.join(emojis)}")
+    
+    await ctx.send(ui("34", "ACTIVE REGISTRY", "\n".join(lines)))
 
 @bot.command()
 async def stopreact(ctx, *, args=None):
-    """Usage: ,stopreact all | ,stopreact @mention | [Reply] ,stopreact"""
     if args and "all" in args.lower():
         bot.targets = {}
-        return await ctx.send(ui("31", "AR", "All targets cleared."))
+        return await ctx.send(ui("31", "AR", "Registry cleared."))
     
     tid = None
     if ctx.message.reference:
@@ -94,17 +106,14 @@ async def stopreact(ctx, *, args=None):
 
     if tid and tid in bot.targets:
         bot.targets.pop(tid)
-        await ctx.send(ui("31", "AR REMOVED", f"Removed: {tid}"))
+        # Try to resolve name for the removal message
+        user = bot.get_user(tid)
+        name = user.name if user else tid
+        await ctx.send(ui("31", "AR REMOVED", f"Removed: {name}"))
     else:
-        await ctx.send(ui("31", "ERROR", "Target not found in list."))
+        await ctx.send(ui("31", "ERROR", "Target not found."))
 
-@bot.command()
-async def targets(ctx):
-    if not bot.targets: return await ctx.send(ui("34", "AR", "Empty."))
-    t_list = "\n".join([f"[1;34m{k}[0m: {' '.join(v)}" for k, v in bot.targets.items()])
-    await ctx.send(ui("34", "ACTIVE", t_list))
-
-# ─── RE-FIXED UTILITY HELP ───
+# ─── UTILITIES ───
 
 @bot.command()
 async def help(ctx, cat=None):
@@ -116,11 +125,9 @@ async def help(ctx, cat=None):
     if c == "social":
         body = "`,ar @u [e]` | `,targets` | `,stopreact` | `,mock`"
         await ctx.send(ui("36", "SOCIAL", body))
-    elif c == "utility":
+    elif c in ["utility", "util"]:
         body = "`,spam [n] [t]` | `,purge [n]` | `,afk` | `,stop`"
         await ctx.send(ui("31", "UTILITY", body))
-
-# ─── CORE UTILS ───
 
 @bot.command()
 async def purge(ctx, n: int):
