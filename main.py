@@ -17,39 +17,39 @@ bot.spamming = False
 bot.mock_target = None
 bot.uwu_target = None
 bot.afk_reason = None
-bot.afk_log = [] # Stores ping history
+bot.afk_log = [] 
 bot.status_messages = []
 bot.rotating_status = False
 
 @bot.event
 async def on_ready():
-    print(f"─── {bot.user} v6.6 SENTINEL ACTIVE ───")
+    print(f"─── {bot.user} v6.7 LOCKDOWN ACTIVE ───")
 
 @bot.event
 async def on_message(message):
+    # 1. ALWAYS process commands first
     await bot.process_commands(message)
-    uid = int(message.author.id)
-    
-    # ─── SECURE AFK LOGIC ───
+
+    # 2. HARD FILTER FOR SELF-MESSAGES (AFK OFF)
     if message.author.id == bot.user.id:
         if bot.afk_reason:
-            # Ignore commands and bot's own UI
-            if message.content.startswith(bot.command_prefix) or "┏━" in message.content:
-                return
-            
-            # Disable AFK only on a real outgoing message
-            bot.afk_reason = None
-            await message.channel.send("`[AFK]` Disabled. Welcome back.", delete_after=3)
-        return
+            # ONLY disable AFK if it's NOT a command AND NOT a bot-sent UI message
+            if not message.content.startswith(bot.command_prefix) and "┏━" not in message.content and "**[AFK]**" not in message.content:
+                bot.afk_reason = None
+                await message.channel.send("`[AFK]` Disabled. Welcome back.", delete_after=3)
+        return # STOP processing here if it's your own message
 
-    # ─── PING TRACKER (Does NOT disable AFK) ───
+    # 3. LOGIC FOR OTHERS (Pings, AR, Mock)
+    uid = int(message.author.id)
+
+    # AFK PING RESPONDER & LOGGER
     if bot.afk_reason and bot.user.mentioned_in(message) and not message.mention_everyone:
         timestamp = time.strftime("%H:%M:%S", time.localtime())
         log_entry = f"[1;30m[{timestamp}][0m [1;34m{message.author.name}[0m [1;30min[0m #{message.channel}"
         bot.afk_log.append(log_entry)
         await message.channel.send(f"**[AFK]** {bot.afk_reason}", delete_after=5)
 
-    # ─── MULTI-STICK AR ───
+    # MULTI-STICK AR
     if uid in bot.targets:
         if not message.content.startswith(bot.command_prefix):
             for e in bot.targets[uid]:
@@ -58,15 +58,14 @@ async def on_message(message):
                     await asyncio.sleep(0.05) 
                 except: pass
 
-    # ─── TROLLING ───
-    if uid != int(bot.user.id):
-        if bot.mock_target == uid:
-            await message.channel.send("".join([c.upper() if i%2==0 else c.lower() for i,c in enumerate(message.content)]))
-        if bot.uwu_target == uid:
-            uwu_text = message.content.replace('r','w').replace('l','w').replace('R','W').replace('L','W')
-            await message.channel.send(f"{uwu_text} uwu")
+    # TROLLING
+    if bot.mock_target == uid:
+        await message.channel.send("".join([c.upper() if i%2==0 else c.lower() for i,c in enumerate(message.content)]))
+    if bot.uwu_target == uid:
+        uwu_text = message.content.replace('r','w').replace('l','w').replace('R','W').replace('L','W')
+        await message.channel.send(f"{uwu_text} uwu")
 
-# ─── NEAT UI ENGINE ───
+# ─── UI ENGINE ───
 def ui(color, title, text):
     line = "━━━━━━━━━━━━━━━━━━━━"
     return (
@@ -82,19 +81,17 @@ def ui(color, title, text):
 @bot.command()
 async def afk(ctx, *, reason="Away"):
     bot.afk_reason = reason
-    bot.afk_log = [] # Reset log for new session
+    bot.afk_log = [] 
     await ctx.send(ui("33", "AFK", f"Status: [1;33mENABLED[0m\nReason: {reason}"), delete_after=5)
 
 @bot.command()
 async def afklog(ctx):
     if not bot.afk_log:
         return await ctx.send(ui("34", "AFK LOG", "No pings recorded."), delete_after=5)
-    
-    # Show last 10 pings
     history = "\n".join(bot.afk_log[-10:])
     await ctx.send(ui("34", "AFK LOG", history), delete_after=15)
 
-# ─── UPDATED HELP ───
+# ─── STATUS PAGE (RE-ALIGNED) ───
 
 @bot.command()
 async def help(ctx, cat=None):
