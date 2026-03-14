@@ -1,137 +1,121 @@
-import discord
-import asyncio
-import os
-import re
-import time
-import requests
+import discord, asyncio, os, re, time, requests
 from discord.ext import commands
 from flask import Flask
 from threading import Thread
 
-# ─── SYSTEM PULSE ───
 app = Flask(__name__)
 @app.route('/')
 def home(): return "SYSTEM ONLINE"
+def run(): app.run(host='0.0.0.0', port=8080)
 
-def run_flask():
-    app.run(host='0.0.0.0', port=8080)
+# We use the simplest possible setup to ensure the bot actually responds
+bot = commands.Bot(command_prefix=",", self_bot=True, help_command=None)
 
-# ─── THE BOT CLASS ───
-# CRITICAL: Intents must be enabled for the bot to "see" messages to react to
-intents = discord.Intents.default()
-intents.message_content = True 
+# Global Storage
+bot.spamming = False
+bot.targets = {} # {user_id: [emojis]}
 
-class Kill(commands.Bot):
-    def __init__(self):
-        super().__init__(command_prefix=",", self_bot=True, help_command=None, intents=intents)
-        self.spamming = False
-        self.targets = {} # {int(user_id): [emojis]}
-        self.status_dot = discord.Status.online
+@bot.event
+async def on_ready():
+    print(f"─── {bot.user} ONLINE ───")
 
-    async def on_ready(self):
-        print(f"─── SESSION ACTIVE: {self.user} ───")
+@bot.event
+async def on_message(message):
+    # 1. ALWAYS process commands first
+    await bot.process_commands(message)
 
-    async def on_message(self, message):
-        # Always process commands first
-        await self.process_commands(message)
+    # 2. Check targets (Dictionary check)
+    if message.author.id in bot.targets:
+        if not message.content.startswith(","):
+            for emoji in bot.targets[message.author.id]:
+                try: await message.add_reaction(emoji.strip())
+                except: pass
 
-        # ─── MULTI-TARGET AUTO REACT ───
-        # We force the comparison to be integer-based
-        author_id = int(message.author.id)
-        
-        if author_id in self.targets:
-            # Don't react to your own commands
-            if not message.content.startswith(self.command_prefix):
-                emojis = self.targets[author_id]
-                for emoji in emojis:
-                    try: 
-                        await message.add_reaction(emoji.strip())
-                    except: 
-                        pass
+def ui(color, title, text):
+    return f"```ansi\n[1;{color}m┏━ [ {title} ] ━┓[0m\n{text}\n[1;30m┗━ v4.8 ━┛[0m\n```"
 
-bot = Kill()
-
-async def ui_send(ctx, title, body, footer="v4.7", color="34"):
-    ui_box = f"```ansi\n[1;{color}m┏━━ [ {title} ] ━━┓[0m\n{body}\n[1;30m┗━━ {footer} ━━┛[0m\n```"
-    try: await ctx.send(ui_box, delete_after=10)
-    except: await ctx.send(f"**[{title}]** {body}")
-
-# ─── THE TARGETING ENGINE (FORCED INTEGERS) ───
+# ─── THE AR COMMANDS ───
 
 @bot.command(aliases=['ar'])
 async def autoreact(ctx, *, args=None):
     target_id = None
     
     if ctx.message.reference:
-        ref = await ctx.channel.fetch_message(ctx.message.reference.message_id)
-        target_id = int(ref.author.id)
-        raw_emojis = args if args else "🔥"
-    elif args and "me" in args.lower():
-        target_id = int(bot.user.id)
-        raw_emojis = args.lower().replace("me", "").strip()
+        msg = await ctx.channel.fetch_message(ctx.message.reference.message_id)
+        target_id = msg.author.id
+        emojis = args.split() if args else ["🔥"]
     elif args:
-        id_m = re.search(r'\d+', args)
-        if id_m:
-            target_id = int(id_m.group())
-            raw_emojis = re.sub(r'<@!?\d+>', '', args).strip()
+        if "me" in args.lower():
+            target_id = bot.user.id
+            emojis = args.lower().replace("me", "").split()
+        else:
+            id_match = re.search(r'\d+', args)
+            if id_match:
+                target_id = int(id_match.group())
+                # Remove the ID/Mention from the string to get just emojis
+                clean_args = re.sub(r'<@!?\d+>', '', args).strip()
+                emojis = clean_args.split()
+        
+        if not emojis: emojis = ["🔥"]
     
     if target_id:
-        emojis = raw_emojis.split() if raw_emojis else ["🔥"]
-        # CRITICAL: Store key as integer
         bot.targets[target_id] = emojis
-        await ui_send(ctx, "AR ADDED", f"Target: {target_id}\nEmojis: {' '.join(emojis)}\nActive: {len(bot.targets)}", "SUCCESS", "32")
+        await ctx.send(ui("32", "AR ADDED", f"ID: {target_id}\nEmojis: {' '.join(emojis)}"))
     else:
-        await ui_send(ctx, "ERR", "Mention or Reply.", "FAIL", "31")
-
-@bot.command()
-async def targets(ctx):
-    if not bot.targets:
-        return await ui_send(ctx, "TARGETS", "No active targets.", "EMPTY", "34")
-    
-    # Debug view: shows IDs and their assigned emojis
-    body = "\n".join([f"[1;34m{k}[0m: {' '.join(v)}" for k, v in bot.targets.items()])
-    await ui_send(ctx, "ACTIVE LIST", body, "DATABASE", "34")
+        await ctx.send("**[ERROR]** Mention someone or reply.")
 
 @bot.command()
 async def stopreact(ctx, *, args=None):
     if args and "all" in args.lower():
         bot.targets = {}
-        await ui_send(ctx, "REACT", "Wiped all.", "CLEARED", "31")
-    elif args:
-        id_m = re.search(r'\d+', args)
-        if id_m:
-            tid = int(id_m.group())
-            if tid in bot.targets: del bot.targets[tid]
-            await ui_send(ctx, "REACT", f"Removed: {tid}", "DELETED", "31")
-    elif ctx.message.reference:
-        ref = await ctx.channel.fetch_message(ctx.message.reference.message_id)
-        tid = int(ref.author.id)
-        if tid in bot.targets: del bot.targets[tid]
-        await ui_send(ctx, "REACT", f"Removed: {tid}", "DELETED", "31")
+        await ctx.send(ui("31", "AR", "Cleared all targets."))
+    else:
+        # Default to removing person you replied to or mentioned
+        id_match = re.search(r'\d+', args) if args else None
+        target_id = int(id_match.group()) if id_match else None
+        if not target_id and ctx.message.reference:
+            msg = await ctx.channel.fetch_message(ctx.message.reference.message_id)
+            target_id = msg.author.id
+            
+        if target_id in bot.targets:
+            del bot.targets[target_id]
+            await ctx.send(ui("31", "AR", f"Removed {target_id}"))
 
-# ─── TURBO UTILS ───
+@bot.command()
+async def targets(ctx):
+    if not bot.targets:
+        return await ctx.send(ui("34", "TARGETS", "None active."))
+    t_list = "\n".join([f"{k}: {' '.join(v)}" for k, v in bot.targets.items()])
+    await ctx.send(ui("34", "ACTIVE LIST", t_list))
+
+# ─── UTILS ───
 
 @bot.command()
 async def spam(ctx, n: int, *, text):
     bot.spamming = True
     for _ in range(n):
         if not bot.spamming: break
-        await ctx.send(text); await asyncio.sleep(0.4) 
+        await ctx.send(text)
+        await asyncio.sleep(0.4)
 
 @bot.command()
 async def purge(ctx, n: int):
     await ctx.message.delete()
-    async for msg in ctx.channel.history(limit=n):
-        if msg.author.id == bot.user.id:
-            try: await msg.delete(); await asyncio.sleep(0.05) 
+    async for m in ctx.channel.history(limit=n):
+        if m.author.id == bot.user.id:
+            try: await m.delete(); await asyncio.sleep(0.05)
             except: pass
 
 @bot.command()
 async def stop(ctx):
     bot.spamming = False
     bot.targets = {}
-    await ui_send(ctx, "HALT", "All cleared.", "CLEAN", "31")
+    await ctx.send(ui("31", "HALT", "Everything stopped."))
+
+@bot.command()
+async def ping(ctx):
+    await ctx.send(ui("32", "PONG", f"{round(bot.latency * 1000)}ms"))
 
 if __name__ == "__main__":
-    Thread(target=run_flask).start()
+    Thread(target=run).start()
     bot.run(os.getenv("DISCORD_TOKEN"))
