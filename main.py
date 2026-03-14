@@ -13,58 +13,131 @@ def run_flask(): app.run(host='0.0.0.0', port=8080)
 bot = commands.Bot(command_prefix=",", self_bot=True, help_command=None)
 
 # --- GLOBAL REGISTRIES ---
-bot.targets = {}       # {int_id: [emoji_list]}
+bot.targets = {}       
 bot.spamming = False
 bot.mock_target = None
-bot.uwu_target = None
+bot.status_messages = []
+bot.rotating_status = False
 
 @bot.event
 async def on_ready():
-    print(f"─── {bot.user} ACTIVE ───")
+    print(f"─── {bot.user} v6.0 TURBO ACTIVE ───")
 
 @bot.event
 async def on_message(message):
     await bot.process_commands(message)
-
     author_id = int(message.author.id)
     
-    # MULTI-AR LOGIC
     if author_id in bot.targets:
         if not message.content.startswith(","):
             for e in bot.targets[author_id]:
                 try: 
                     await message.add_reaction(e.strip())
-                    await asyncio.sleep(0.1) 
-                except: 
-                    pass
+                    await asyncio.sleep(0.05) # Half-speed buffer for sticking
+                except: pass
 
-    # TROLLING LOGIC
-    if author_id != int(bot.user.id):
-        if bot.mock_target == author_id:
-            await message.channel.send("".join([c.upper() if i%2==0 else c.lower() for i,c in enumerate(message.content)]))
+    if author_id != int(bot.user.id) and bot.mock_target == author_id:
+        await message.channel.send("".join([c.upper() if i%2==0 else c.lower() for i,c in enumerate(message.content)]))
 
 def ui(color, title, text):
-    # Removed version number from footer
+    # Faster delete_after on UI boxes (6 seconds instead of 10)
     return f"```ansi\n[1;{color}m┏━━ [ {title} ] ━━┓[0m\n{text}\n[1;30m┗━━━━━━━━━━━━━━━━┛[0m\n```"
 
-# ─── AR COMMANDS (NAME-BASED) ───
+# ─── UPDATED HELP SYSTEM ───
+
+@bot.command()
+async def help(ctx, cat=None):
+    if not cat:
+        body = "[1;34m,help status[0m\n[1;35m,help social[0m\n[1;31m,help utility[0m"
+        return await ctx.send(ui("37", "HELP MENU", body), delete_after=6)
+    
+    c = cat.lower()
+    if c == "status":
+        body = "`,addstatus [text]` | `,rotatestatus [on/off]`\n`,rpc [text]` | `,dot [online/idle/dnd]`\n`,clearstatus`"
+        await ctx.send(ui("35", "STATUS COMMANDS", body), delete_after=8)
+    elif c == "social":
+        body = "`,ar @u [e]` | `,targets` | `,stopreact` | `,mock @u`"
+        await ctx.send(ui("36", "SOCIAL COMMANDS", body), delete_after=8)
+    elif c == "utility":
+        body = "`,spam [n] [t]` | `,purge [n]` | `,stop` | `,ping`"
+        await ctx.send(ui("31", "UTILITY COMMANDS", body), delete_after=8)
+
+# ─── TURBO STATUS COMMANDS ───
+
+@bot.command()
+async def dot(ctx, mode):
+    modes = {"online": discord.Status.online, "idle": discord.Status.idle, "dnd": discord.Status.dnd, "invisible": discord.Status.invisible}
+    status = modes.get(mode.lower(), discord.Status.online)
+    await bot.change_presence(status=status)
+    await ctx.send(ui("32", "STATUS", f"Mode set to: {mode.upper()}"), delete_after=3)
+
+@bot.command()
+async def addstatus(ctx, *, t):
+    bot.status_messages.append(t)
+    await ctx.send(ui("35", "STATUS", f"Added: {t}"), delete_after=3)
+
+@bot.command()
+async def rotatestatus(ctx, toggle):
+    bot.rotating_status = (toggle.lower() == "on")
+    if bot.rotating_status:
+        async def s_loop():
+            while bot.rotating_status:
+                for t in bot.status_messages:
+                    if not bot.rotating_status: break
+                    await bot.change_presence(activity=discord.Activity(type=discord.ActivityType.custom, name="x", state=t))
+                    await asyncio.sleep(10) # Speed of rotation
+        bot.loop.create_task(s_loop())
+    await ctx.send(ui("32", "ROTATION", f"Status Rotation: {toggle.upper()}"), delete_after=3)
+
+@bot.command()
+async def clearstatus(ctx):
+    bot.status_messages = []
+    bot.rotating_status = False
+    await bot.change_presence(activity=None)
+    await ctx.send(ui("31", "STATUS", "Cleared all presence."), delete_after=3)
+
+@bot.command()
+async def rpc(ctx, *, t):
+    await bot.change_presence(activity=discord.Game(name=t))
+    await ctx.send(ui("34", "RPC", f"Now Playing: {t}"), delete_after=3)
+
+# ─── TURBO UTILITY ───
+
+@bot.command()
+async def purge(ctx, n: int):
+    await ctx.message.delete()
+    count = 0
+    async for m in ctx.channel.history(limit=n + 10):
+        if m.author.id == bot.user.id:
+            try: 
+                await m.delete()
+                count += 1
+                if count >= n: break
+                await asyncio.sleep(0.02) # Ultra-fast purge
+            except: pass
+
+@bot.command()
+async def spam(ctx, n: int, *, t):
+    bot.spamming = True
+    for _ in range(n):
+        if not bot.spamming: break
+        await ctx.send(t)
+        await asyncio.sleep(0.3) # Slightly faster spam
+
+# ─── AR ENGINE (NAMED) ───
 
 @bot.command(aliases=['ar'])
 async def autoreact(ctx, *, args=None):
     target = None
-    
     if ctx.message.reference:
         ref = await ctx.channel.fetch_message(ctx.message.reference.message_id)
-        target = ref.author
-        raw_emojis = args if args else "🔥"
+        target, raw_emojis = ref.author, (args if args else "🔥")
     elif args:
         if "me" in args.lower():
-            target = bot.user
-            raw_emojis = args.lower().replace("me", "").strip()
+            target, raw_emojis = bot.user, args.lower().replace("me", "").strip()
         else:
             id_match = re.search(r'\d+', args)
             if id_match:
-                # Try to get member from cache/fetch
                 uid = int(id_match.group())
                 target = bot.get_user(uid) or await bot.fetch_user(uid)
                 raw_emojis = re.sub(r'<@!?\d+>', '', args).strip()
@@ -72,29 +145,15 @@ async def autoreact(ctx, *, args=None):
     if target:
         emojis = raw_emojis.split() if raw_emojis else ["🔥"]
         bot.targets[int(target.id)] = emojis 
-        # Displays the Name instead of the ID
-        await ctx.send(ui("32", "AR ADDED", f"Target: {target.name}\nActive: {len(bot.targets)}"))
+        await ctx.send(ui("32", "AR ADDED", f"Target: {target.name}\nTotal: {len(bot.targets)}"), delete_after=4)
     else:
-        await ctx.send(ui("31", "ERROR", "Could not find user."))
-
-@bot.command()
-async def targets(ctx):
-    if not bot.targets: return await ctx.send(ui("34", "AR", "Empty."))
-    
-    lines = []
-    for tid, emojis in bot.targets.items():
-        # Try to resolve name for the list
-        user = bot.get_user(tid)
-        name = user.name if user else tid # Fallback to ID if name not found
-        lines.append(f"[1;34m{name}[0m: {' '.join(emojis)}")
-    
-    await ctx.send(ui("34", "ACTIVE REGISTRY", "\n".join(lines)))
+        await ctx.send("User not found.", delete_after=3)
 
 @bot.command()
 async def stopreact(ctx, *, args=None):
     if args and "all" in args.lower():
         bot.targets = {}
-        return await ctx.send(ui("31", "AR", "Registry cleared."))
+        return await ctx.send(ui("31", "AR", "Registry Wiped."), delete_after=3)
     
     tid = None
     if ctx.message.reference:
@@ -106,49 +165,23 @@ async def stopreact(ctx, *, args=None):
 
     if tid and tid in bot.targets:
         bot.targets.pop(tid)
-        # Try to resolve name for the removal message
-        user = bot.get_user(tid)
-        name = user.name if user else tid
-        await ctx.send(ui("31", "AR REMOVED", f"Removed: {name}"))
-    else:
-        await ctx.send(ui("31", "ERROR", "Target not found."))
-
-# ─── UTILITIES ───
+        await ctx.send(ui("31", "AR", f"Removed: {tid}"), delete_after=3)
 
 @bot.command()
-async def help(ctx, cat=None):
-    if not cat:
-        body = "[1;34m,help status[0m\n[1;35m,help social[0m\n[1;31m,help utility[0m"
-        return await ctx.send(ui("37", "HELP MENU", body))
-    
-    c = cat.lower()
-    if c == "social":
-        body = "`,ar @u [e]` | `,targets` | `,stopreact` | `,mock`"
-        await ctx.send(ui("36", "SOCIAL", body))
-    elif c in ["utility", "util"]:
-        body = "`,spam [n] [t]` | `,purge [n]` | `,afk` | `,stop`"
-        await ctx.send(ui("31", "UTILITY", body))
-
-@bot.command()
-async def purge(ctx, n: int):
-    await ctx.message.delete()
-    async for m in ctx.channel.history(limit=n):
-        if m.author.id == bot.user.id:
-            try: await m.delete(); await asyncio.sleep(0.05)
-            except: pass
-
-@bot.command()
-async def spam(ctx, n: int, *, t):
-    bot.spamming = True
-    for _ in range(n):
-        if not bot.spamming: break
-        await ctx.send(t); await asyncio.sleep(0.4)
+async def targets(ctx):
+    if not bot.targets: return await ctx.send(ui("34", "AR", "Empty."), delete_after=5)
+    lines = [f"[1;34m{(bot.get_user(tid).name if bot.get_user(tid) else tid)}[0m: {' '.join(emojis)}" for tid, emojis in bot.targets.items()]
+    await ctx.send(ui("34", "REGISTRY", "\n".join(lines)), delete_after=10)
 
 @bot.command()
 async def stop(ctx):
-    bot.spamming = False
+    bot.spamming = bot.rotating_status = False
     bot.targets = {}; bot.mock_target = None
-    await ctx.send(ui("31", "HALT", "Wiped all."))
+    await ctx.send(ui("31", "HALT", "All tasks killed."), delete_after=3)
+
+@bot.command()
+async def ping(ctx):
+    await ctx.send(ui("32", "PONG", f"{round(bot.latency * 1000)}ms"), delete_after=3)
 
 if __name__ == "__main__":
     Thread(target=run_flask).start()
