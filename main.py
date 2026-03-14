@@ -4,6 +4,7 @@ import os
 import re
 import time
 import random
+import requests
 from discord.ext import commands
 from flask import Flask
 from threading import Thread
@@ -29,27 +30,42 @@ class Kill(commands.Bot):
         self.afk_reason = None
         self.afk_time = 0
         self.afk_pings = 0
-        self.afk_log = []  # Stores names of people who pinged
+        self.afk_log = []
         self.rotating_status = False
         self.status_messages = []
         self.status_dot = discord.Status.online
         self.dm_running = False
         self.mock_target = None
         self.uwu_target = None
+        # Bio Rotator
+        self.rotating_bio = False
+        self.bio_messages = []
 
     async def on_ready(self):
         print(f"─── SESSION ACTIVE: {self.user} ───")
+
+    def update_bio(self, text):
+        """Manually updates the 'About Me' section via API"""
+        url = "https://discord.com/api/v9/users/@me/profile"
+        headers = {"Authorization": TOKEN, "Content-Type": "application/json"}
+        data = {"bio": text}
+        requests.patch(url, headers=headers, json=data)
 
     async def status_rotator(self):
         while self.rotating_status:
             if not self.status_messages: break
             for text in self.status_messages:
                 if not self.rotating_status: break
-                await self.change_presence(
-                    activity=discord.CustomActivity(name=text),
-                    status=self.status_dot
-                )
+                await self.change_presence(activity=discord.CustomActivity(name=text), status=self.status_dot)
                 await asyncio.sleep(5)
+
+    async def bio_rotator(self):
+        while self.rotating_bio:
+            if not self.bio_messages: break
+            for text in self.bio_messages:
+                if not self.rotating_bio: break
+                self.update_bio(text)
+                await asyncio.sleep(30) # Safe interval for Bio
 
     def sPoNgEbOb(self, text):
         return "".join([char.upper() if i % 2 == 0 else char.lower() for i, char in enumerate(text)])
@@ -61,30 +77,22 @@ class Kill(commands.Bot):
 
     async def on_message(self, message):
         if message.author.id != self.user.id:
-            # Social Logic
             if self.mock_target and message.author.id == self.mock_target:
                 try: await message.channel.send(self.sPoNgEbOb(message.content))
                 except: pass
-            
             if self.uwu_target and message.author.id == self.uwu_target:
                 try: await message.channel.send(self.uwuify(message.content))
                 except: pass
-
-            # AFK Responder & Logger
             if self.afk_reason and self.user.mentioned_in(message):
                 self.afk_pings += 1
                 log_entry = f"**{message.author}** in #{message.channel}"
-                if log_entry not in self.afk_log:
-                    self.afk_log.append(log_entry)
+                if log_entry not in self.afk_log: self.afk_log.append(log_entry)
                 try: await message.channel.send(f"**[AFK]** {self.afk_reason}", delete_after=10)
                 except: pass
-
-            # Auto-React
             if self.target_id and self.react_emoji and message.author.id == self.target_id:
                 try: await message.add_reaction(self.react_emoji)
                 except: pass
         
-        # Self Management
         if message.author.id == self.user.id:
             if message.content.startswith("**[AFK]**"): return
             if message.content.startswith(self.command_prefix):
@@ -92,24 +100,14 @@ class Kill(commands.Bot):
                 return
             if self.afk_reason:
                 if (time.time() - self.afk_time) < 2: return
-                
-                # Report Log upon return
                 log_text = "\n".join(self.afk_log) if self.afk_log else "No pings recorded."
-                msg = (f"Welcome back!\n"
-                       f"Total Pings: **{self.afk_pings}**\n"
-                       f"[1;30mLogged Users:[0m\n{log_text}")
-                
-                self.afk_reason = None
-                self.afk_pings = 0
-                self.afk_log = []
+                msg = f"Welcome back!\nPings: **{self.afk_pings}**\n[1;30mLogged:[0m\n{log_text}"
+                self.afk_reason, self.afk_pings, self.afk_log = None, 0, []
                 await ui_send(message.channel, "SYSTEM", msg, "AFK REMOVED", "32")
 
-# ─── UI Helper (Set to 7 Seconds) ───
+# ─── UI Helper ───
 async def ui_send(ctx, title, body, footer="Selfbot", color="34"):
-    ui = (f"```ansi\n"
-          f"[1;{color}m┏━━━━━━ [ {title} ] ━━━━━━┓[0m\n"
-          f"{body}\n"
-          f"[1;30m┗━━ {footer} ━━┛[0m\n```")
+    ui = (f"```ansi\n[1;{color}m┏━━━━ [ {title} ] ━━━━┓[0m\n{body}\n[1;30m┗━━ {footer} ━━┛[0m\n```")
     dest = ctx.channel if hasattr(ctx, 'channel') else ctx
     await dest.send(ui, delete_after=7)
 
@@ -125,7 +123,7 @@ def add_commands(bot: Kill):
             body = "[1;37m,afk [r][0m | [1;37m,purge [n][0m\n[1;37m,ping[0m | [1;37m,stop[0m"
         elif category.lower() == "status":
             title, color = "STATUS CMDS", "35"
-            body = "[1;37m,dot [c][0m | [1;37m,rpc [t][0m\n[1;37m,addmsg [t][0m | [1;37m,rotate [on/off][0m"
+            body = "[1;37m,dot [c][0m | [1;37m,rpc [t][0m\n[1;37m,addmsg [t][0m | [1;37m,rotate [on][0m\n[1;37m,addbio [t][0m | [1;37m,rotatebio [on][0m"
         elif category.lower() == "social":
             title, color = "SOCIAL CMDS", "31"
             body = "[1;37m,mock [@u][0m | [1;37m,uwu [@u][0m\n[1;37m,unmock[0m | [1;37m,massdm [m][0m | [1;37m,spam [n] [t][0m"
@@ -133,76 +131,14 @@ def add_commands(bot: Kill):
         await ui_send(ctx, title, body, f"Category: {category or 'Main'}", color)
 
     @bot.command()
-    async def mock(ctx, target: str):
-        bot.mock_target = int(re.search(r'\d+', target).group())
-        bot.uwu_target = None
-        await ui_send(ctx, "MOCK", f"Targeting: <@{bot.mock_target}>", "TROLLING", "31")
-
-    @bot.command()
-    async def uwu(ctx, target: str):
-        bot.uwu_target = int(re.search(r'\d+', target).group())
-        bot.mock_target = None
-        await ui_send(ctx, "UWU", f"Targeting: <@{bot.uwu_target}>", "UWU", "35")
-
-    @bot.command()
-    async def unmock(ctx):
-        bot.mock_target = bot.uwu_target = None
-        await ui_send(ctx, "SOCIAL", "Targets cleared.", "CLEARED", "32")
-
-    @bot.command()
-    async def ping(ctx):
-        await ui_send(ctx, "PONG", f"Latency: [1;32m{round(bot.latency * 1000)}ms[0m", "Active", "32")
-
-    @bot.command()
-    async def afk(ctx, *, reason="Away."):
-        bot.afk_reason, bot.afk_time, bot.afk_pings, bot.afk_log = reason, time.time(), 0, []
-        await ui_send(ctx, "AFK", f"Reason: {reason}", "SET", "33")
-
-    @bot.command()
     async def purge(ctx, n: int):
-        await ctx.channel.purge(limit=n, check=lambda m: m.author.id == bot.user.id)
+        await ctx.message.delete()
+        async for message in ctx.channel.history(limit=n):
+            if message.author.id == bot.user.id:
+                try: await message.delete(); await asyncio.sleep(0.2)
+                except: continue
         await ctx.send(f"```ansi\n[1;34m[ PURGE ][0m Cleared {n} messages.```", delete_after=2)
 
     @bot.command()
-    async def rpc(ctx, *, text: str):
-        await bot.change_presence(activity=discord.Streaming(name=text, url="https://twitch.tv/discord"), status=bot.status_dot)
-        await ui_send(ctx, "RPC", f"Streaming: {text}", "RPC SET", "35")
-
-    @bot.command()
-    async def addmsg(ctx, *, text: str):
-        bot.status_messages.append(text)
-        await ui_send(ctx, "STATUS", f"Added: {text}", "ROTATOR", "32")
-
-    @bot.command()
-    async def rotate(ctx, toggle: str):
-        if toggle.lower() == "on":
-            bot.rotating_status = True
-            bot.loop.create_task(bot.status_rotator())
-            await ui_send(ctx, "ROTATOR", "ENABLED", "ON", "32")
-        else:
-            bot.rotating_status = False
-            await ui_send(ctx, "ROTATOR", "DISABLED", "OFF", "31")
-
-    @bot.command()
-    async def dot(ctx, mode: str):
-        modes = {"online": discord.Status.online, "idle": discord.Status.idle, "dnd": discord.Status.dnd, "inv": discord.Status.invisible}
-        bot.status_dot = modes.get(mode.lower(), discord.Status.online)
-        await bot.change_presence(status=bot.status_dot)
-        await ui_send(ctx, "DOT", f"Mode: {mode.upper()}", "UPDATED", "34")
-
-    @bot.command()
-    async def stop(ctx):
-        bot.dm_running = bot.rotating_status = bot.spamming = False
-        bot.target_id = bot.afk_reason = bot.mock_target = bot.uwu_target = None
-        bot.afk_pings = 0
-        bot.afk_log = []
-        await bot.change_presence(activity=None)
-        await ui_send(ctx, "SYSTEM", "Everything stopped.", "HALT", "31")
-
-# ─── Execution ───
-if __name__ == "__main__":
-    Thread(target=run_flask, daemon=True).start()
-    if TOKEN:
-        master_bot = Kill()
-        add_commands(master_bot)
-        master_bot.run(TOKEN)
+    async def spam(ctx, amount: int, *, text: str):
+        bot
