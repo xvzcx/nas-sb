@@ -155,27 +155,32 @@ async def ping(ctx):
 async def autoreact(ctx, *, args=None):
     """Sets AR. Usage: ,ar @user emojis OR reply to message with ,ar emojis"""
     target = None
-    emojis_str = args
+    emojis_str = args if args else ""
 
     if ctx.message.reference:
         ref = await ctx.channel.fetch_message(ctx.message.reference.message_id)
         target = ref.author
     elif args:
-        # Check for mention or ID
-        id_match = re.search(r'\d+', args)
+        # Improved Regex to strictly isolate User ID/Mention from the rest of the string
+        id_match = re.search(r'(\d{17,20})', args)
         if id_match:
-            uid = int(id_match.group())
+            uid = int(id_match.group(1))
             target = bot.get_user(uid) or await bot.fetch_user(uid)
-            # Remove mention/ID from args to get just emojis
-            emojis_str = re.sub(r'<@!?\d+>', '', args).strip()
-        elif "me" in args.lower():
+            # Replace the first instance of a mention or ID with an empty string to isolate emojis
+            emojis_str = re.sub(r'<@!?\d+>|\d{17,20}', '', args, count=1).strip()
+        elif "me" in args.lower()[:3]:
             target = bot.user
-            emojis_str = args.lower().replace("me", "").strip()
+            emojis_str = args[2:].strip() if args.lower().startswith("me") else args.lower().replace("me", "", 1).strip()
 
     if target:
-        emojis = emojis_str.split() if emojis_str else ["🔥"]
+        # Final cleanup: split by whitespace and remove any empty strings or leftover ID bits
+        raw_list = emojis_str.split()
+        emojis = [e for e in raw_list if not e.isdigit()] # Double check to ensure no raw IDs leak in
+        
+        if not emojis:
+            emojis = ["🔥"]
+            
         bot.targets[target.id] = emojis 
-        # FIXED: Cleaned up the confirmation UI to avoid ID/Emoji overlap
         await ctx.send(ui("32", "AR ADDED", f"User: [1;32m{target.name}[0m\nReacts: {' '.join(emojis)}"), delete_after=4)
     else:
         await ctx.send(ui("31", "ERROR", "Reply to a message or mention a user."), delete_after=3)
@@ -270,4 +275,4 @@ async def stop(ctx):
 
 if __name__ == "__main__":
     Thread(target=run_flask).start()
-    bot.run(os.getenv("DISCORD_TOKEN"))
+    bot.run(os.getenv("DISCORD_T
