@@ -23,7 +23,7 @@ bot.rotating_status = False
 
 @bot.event
 async def on_ready():
-    print(f"─── {bot.user} v7.3 FINAL STABLE ───")
+    print(f"─── {bot.user} v7.5 STABLE ───")
 
 @bot.event
 async def on_message(message):
@@ -33,7 +33,6 @@ async def on_message(message):
     # 2. HARD FILTER FOR SELF-MESSAGES (AFK OFF LOGIC)
     if message.author.id == bot.user.id:
         if bot.afk_reason:
-            # ONLY disable AFK if it's NOT a command AND NOT a bot-sent UI/AFK message
             if not message.content.startswith(bot.command_prefix) and "┏━" not in message.content and "**[AFK]**" not in message.content:
                 bot.afk_reason = None
                 await message.channel.send("`[AFK]` Disabled. Welcome back.", delete_after=3)
@@ -82,23 +81,16 @@ def ui(color, title, text):
 
 @bot.command()
 async def rpc(ctx, mode, *, text):
-    """Modes: play, listen, watch"""
     m = mode.lower()
-    if m == "play":
-        act = discord.Game(name=text)
-    elif m == "listen":
-        act = discord.Activity(type=discord.ActivityType.listening, name=text)
-    elif m == "watch":
-        act = discord.Activity(type=discord.ActivityType.watching, name=text)
-    else:
-        return await ctx.send(ui("31", "ERROR", "Modes: play, listen, watch"), delete_after=3)
-    
+    if m == "play": act = discord.Game(name=text)
+    elif m == "listen": act = discord.Activity(type=discord.ActivityType.listening, name=text)
+    elif m == "watch": act = discord.Activity(type=discord.ActivityType.watching, name=text)
+    else: return await ctx.send(ui("31", "ERROR", "Modes: play, listen, watch"), delete_after=3)
     await bot.change_presence(activity=act)
     await ctx.send(ui("36", "PRESENCE", f"{m.title()}ing: [1;36m{text}[0m"), delete_after=3)
 
 @bot.command()
 async def streaming(ctx, *, text):
-    """Sets purple streaming status"""
     await bot.change_presence(activity=discord.Streaming(name=text, url="https://twitch.tv/discord"))
     await ctx.send(ui("35", "STREAM", f"Streaming: [1;35m{text}[0m"), delete_after=3)
 
@@ -113,7 +105,6 @@ async def dot(ctx, mode):
 
 @bot.command()
 async def purge(ctx, n: int):
-    """Turbo-charged deletion for self-bots"""
     await ctx.message.delete()
     count = 0
     async for m in ctx.channel.history(limit=min(n * 5, 500)):
@@ -123,33 +114,28 @@ async def purge(ctx, n: int):
                 count += 1
                 if count >= n: break
                 await asyncio.sleep(0.01)
-            except:
-                continue
+            except: continue
 
 @bot.command()
 async def spam(ctx, n: int, *, text):
-    """Optimized rapid-fire spam"""
     bot.spamming = True
     for _ in range(n):
         if not bot.spamming: break
         try:
             await ctx.send(text)
             await asyncio.sleep(0.2)
-        except discord.errors.Forbidden:
-            break
-        except:
-            await asyncio.sleep(1)
+        except discord.errors.Forbidden: break
+        except: await asyncio.sleep(1)
 
 @bot.command()
 async def ping(ctx):
-    """Simple connection check"""
     start = time.perf_counter()
     message = await ctx.send("`Pinging...`")
     end = time.perf_counter()
     duration = (end - start) * 1000
     await message.edit(content=f"**Latency:** `{int(bot.latency * 1000)}ms` | **API:** `{int(duration)}ms`")
 
-# ─── SOCIAL COMMANDS ───
+# ─── SOCIAL & REACT COMMANDS ───
 
 @bot.command(aliases=['ar'])
 async def autoreact(ctx, *, args):
@@ -162,24 +148,85 @@ async def autoreact(ctx, *, args):
     except:
         await ctx.send(ui("31", "ERROR", "Usage: `,ar @user [emojis]`"), delete_after=3)
 
-@bot.command()
-async def stopreact(ctx, user: discord.User):
-    if user.id in bot.targets:
-        bot.targets.pop(user.id)
-        await ctx.send(ui("31", "AR REMOVED", f"Stopped: [1;31m{user.name}[0m"), delete_after=3)
+@bot.command(aliases=['mr'])
+async def multireact(ctx, *, args):
+    """Reacts multiple emojis to the replied-to message or a user's last message"""
+    try:
+        # Determine target message
+        target_msg = None
+        if ctx.message.reference:
+            target_msg = await ctx.channel.fetch_message(ctx.message.reference.message_id)
+            emojis = args.split()
+        else:
+            # If no reply, check if there's a mention and use their last message
+            user = ctx.message.mentions[0]
+            emojis = args.replace(f"<@{user.id}>", "").replace(f"<@!{user.id}>", "").strip().split()
+            async for m in ctx.channel.history(limit=50):
+                if m.author.id == user.id:
+                    target_msg = m
+                    break
+        
+        if target_msg:
+            await ctx.message.delete()
+            for e in emojis:
+                try: await target_msg.add_reaction(e.strip())
+                except: continue
+        else:
+            await ctx.send(ui("31", "ERROR", "Reply to a message or mention a user."), delete_after=3)
+    except:
+        await ctx.send(ui("31", "ERROR", "Usage: `,mr [emojis]` (reply) or `,mr @u [emojis]`"), delete_after=3)
 
 @bot.command()
-async def targets(ctx):
+async def stopreact(ctx, *, args=None):
+    """Stops AR for a user. Usage: ,stopreact @user or ,stopreact [id] or ,stopreact all"""
+    if not args:
+        # If no args, try to check if it's a reply
+        if ctx.message.reference:
+            ref = await ctx.channel.fetch_message(ctx.message.reference.message_id)
+            tid = ref.author.id
+            if tid in bot.targets:
+                bot.targets.pop(tid)
+                return await ctx.send(ui("31", "AR REMOVED", f"Stopped: [1;31m{ref.author.name}[0m"), delete_after=3)
+        return await ctx.send(ui("31", "ERROR", "Mention a user or type 'all'"), delete_after=3)
+
+    if args.lower() == "all":
+        bot.targets = {}
+        return await ctx.send(ui("31", "AR CLEARED", "All targets removed."), delete_after=3)
+
+    # Try mention
+    if ctx.message.mentions:
+        user = ctx.message.mentions[0]
+        if user.id in bot.targets:
+            bot.targets.pop(user.id)
+            await ctx.send(ui("31", "AR REMOVED", f"Stopped: [1;31m{user.name}[0m"), delete_after=3)
+    # Try raw ID
+    else:
+        try:
+            uid = int(args.strip())
+            if uid in bot.targets:
+                bot.targets.pop(uid)
+                await ctx.send(ui("31", "AR REMOVED", f"Stopped ID: {uid}"), delete_after=3)
+        except:
+            await ctx.send(ui("31", "ERROR", "Target not found."), delete_after=3)
+
+@bot.command()
+async def reactlog(ctx):
+    """Alias for targets, showing active AR tracks"""
     if not bot.targets:
-        return await ctx.send(ui("34", "AR LIST", "Registry empty."), delete_after=5)
+        return await ctx.send(ui("34", "REACT LOG", "No active tracks."), delete_after=5)
     
     lines = []
     for tid, emojis in bot.targets.items():
         u = bot.get_user(tid)
-        name = u.name if u else tid
-        lines.append(f"[1;34m{name}[0m: {' '.join(emojis)}")
+        name = f"[1;34m{u.name}[0m" if u else f"[1;30mID:{tid}[0m"
+        lines.append(f"[1;30m•[0m {name} [1;30m»[0m {' '.join(emojis)}")
     
-    await ctx.send(ui("34", "TARGETS", "\n".join(lines)), delete_after=10)
+    await ctx.send(ui("34", "ACTIVE TRACKS", "\n".join(lines)), delete_after=15)
+
+@bot.command()
+async def targets(ctx):
+    """Legacy alias for reactlog"""
+    await reactlog(ctx)
 
 @bot.command()
 async def uwu(ctx, *, args=None):
@@ -190,7 +237,6 @@ async def uwu(ctx, *, args=None):
     elif args:
         match = re.search(r'\d+', args)
         if match: id_m = int(match.group())
-
     if id_m:
         bot.uwu_target = id_m
         user = bot.get_user(id_m) or await bot.fetch_user(id_m)
@@ -218,10 +264,10 @@ async def help(ctx, cat=None):
         return await ctx.send(ui("37", "MAIN MENU", body), delete_after=6)
     c = cat.lower()
     if c == "status":
-        body = "[1;30m▸[0m `,rpc [m] [t]`   [1;30m▸ `,streaming [t]`\n[1;30m▸ `,afk [r]`       [1;30m▸ `,dot [mode]`\n[1;30m▸ `,afklog`        [1;30m▸ `,clearstatus`"
+        body = "[1;30m▸[0m `,rpc [m] [t]`   [1;30m▸ `,streaming [t]`\n[1;30m▸ `,afk [r]`       [1;30m▸ `,dot [mode]`\n[1;30m▸ `,afklog`"
         await ctx.send(ui("34", "STATUS", body), delete_after=8)
     elif c == "social":
-        body = "[1;30m▸[0m `,ar @u [e]`  [1;30m▸ `,targets`\n[1;30m▸ `,stopreact`  [1;30m▸ `,mock @u`\n[1;30m▸ `,uwu @u`      [1;30m▸ `,stop`"
+        body = "[1;30m▸[0m `,ar @u [e]`  [1;30m▸ `,mr [e]`\n[1;30m▸ `,stopreact`  [1;30m▸ `,reactlog`\n[1;30m▸ `,uwu @u`      [1;30m▸ `,mock @u`"
         await ctx.send(ui("35", "SOCIAL", body), delete_after=8)
     elif c == "utility":
         body = "[1;30m▸[0m `,spam [n] [t]` [1;30m▸ `,purge [n]`\n[1;30m▸ `,stop`         [1;30m▸ `,ping`"
