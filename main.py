@@ -173,6 +173,41 @@ async def autoreact(ctx, *, args=None):
         await ctx.send(ui("32", "AR ADDED", f"User: [1;32m{target.name}[0m\nReacts: {' '.join(emojis)}"), delete_after=4)
 
 @bot.command()
+async def stopreact(ctx, *, args=None):
+    """Stops reacting to a user. Usage: ,stopreact @user or reply."""
+    if args and "all" in args.lower():
+        bot.targets = {}
+        return await ctx.send(ui("31", "AR CLEARED", "All targets removed."), delete_after=3)
+    
+    tid = None
+    if ctx.message.reference:
+        ref = await ctx.channel.fetch_message(ctx.message.reference.message_id)
+        tid = int(ref.author.id)
+    elif args:
+        match = re.search(r'\d+', args)
+        if match: tid = int(match.group())
+
+    if tid and tid in bot.targets:
+        bot.targets.pop(tid)
+        await ctx.send(ui("31", "AR REMOVED", f"Stopped: {tid}"), delete_after=3)
+    else:
+        await ctx.send(ui("31", "ERROR", "Target not found."), delete_after=3)
+
+@bot.command()
+async def targets(ctx):
+    """Lists current AR targets."""
+    if not bot.targets:
+        return await ctx.send(ui("34", "AR LIST", "Registry empty."), delete_after=5)
+    
+    lines = []
+    for tid, emojis in bot.targets.items():
+        user = bot.get_user(tid)
+        name = user.name if user else tid
+        lines.append(f"[1;30m•[0m [1;34m{name}[0m [1;30m»[0m {' '.join(emojis)}")
+    
+    await ctx.send(ui("34", "REGISTRY", "\n".join(lines)), delete_after=10)
+
+@bot.command()
 async def uwu(ctx, *, args=None):
     id_m = None
     if ctx.message.reference:
