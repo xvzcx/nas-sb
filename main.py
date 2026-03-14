@@ -29,7 +29,7 @@ class Kill(commands.Bot):
         self.afk_log = []
         self.mock_target = None
         self.uwu_target = None
-        self.react_target_id = None # Storing ID directly for speed
+        self.react_target_id = None
         self.react_emoji = None
         self.status_dot = discord.Status.online
         self.rotating_bio = False
@@ -59,7 +59,12 @@ class Kill(commands.Bot):
             await ui_send(ctx, "ARGUMENT ERROR", f"Missing: **{error.param.name}**\nUsage: `{usage}`", "FIX INPUT", "31")
 
     async def on_message(self, message):
-        # 1. Handle Self Commands
+        # ─── GLOBAL AUTOMATION (Works for self & others) ───
+        if self.react_target_id and message.author.id == self.react_target_id:
+            try: await message.add_reaction(self.react_emoji)
+            except: pass
+
+        # ─── SELF-SPECIFIC LOGIC ───
         if message.author.id == self.user.id:
             await self.process_commands(message)
             if self.afk_reason and not message.content.startswith(self.command_prefix):
@@ -69,11 +74,7 @@ class Kill(commands.Bot):
                     self.afk_reason, self.afk_pings, self.afk_log = None, 0, []
             return
 
-        # 2. Automation Logic (Others)
-        if self.react_target_id and message.author.id == self.react_target_id:
-            try: await message.add_reaction(self.react_emoji)
-            except: pass
-
+        # ─── OTHERS-ONLY AUTOMATION ───
         if self.mock_target and message.author.id == self.mock_target:
             try: await message.channel.send("".join([c.upper() if i % 2 == 0 else c.lower() for i, c in enumerate(message.content)]))
             except: pass
@@ -96,15 +97,15 @@ async def ui_send(ctx, title, body, footer="Selfbot", color="34"):
 
 bot = Kill()
 
-# ─── HELP ───
+# ─── COMMANDS ───
 @bot.command()
 async def help(ctx, category=None):
     if not category:
         body = "[1;34m,help utility[0m\n[1;35m,help status[0m\n[1;31m,help social[0m"
-        await ui_send(ctx, "HELP MENU", body, "v1.6", "37")
+        await ui_send(ctx, "HELP MENU", body, "v1.7", "37")
     elif category.lower() == "utility":
         body = "[1;37m,purge [n][0m | [1;37m,spam [n] [t][0m\n[1;37m,afk [r][0m | [1;37m,ping[0m | [1;37m,stop[0m"
-        await ui_send(ctx, "UTILITY", body, "Turbo Mode", "34")
+        await ui_send(ctx, "UTILITY", body, "Turbo", "34")
     elif category.lower() == "status":
         body = "[1;37m,addbio [t][0m | [1;37m,rotatebio [on/off][0m\n[1;37m,rpc [t][0m | [1;37m,clear[0m | [1;37m,dot [mode][0m"
         await ui_send(ctx, "STATUS", body, "Profiles", "35")
@@ -112,7 +113,6 @@ async def help(ctx, category=None):
         body = "[1;37m,mock [@u][0m | [1;37m,uwu [@u][0m\n[1;37m,autoreact [@u] [e][0m | [1;37m,stopreact[0m"
         await ui_send(ctx, "SOCIAL", body, "Automation", "31")
 
-# ─── TURBO COMMANDS ───
 @bot.command()
 async def purge(ctx, n: int):
     await ctx.message.delete()
@@ -138,7 +138,6 @@ async def spam(ctx, amount: int, *, text: str):
         except: break
     bot.spamming = False
 
-# ─── SOCIAL AUTOMATION ───
 @bot.command()
 async def autoreact(ctx, target: discord.User, emoji: str):
     bot.react_target_id = target.id
@@ -148,36 +147,42 @@ async def autoreact(ctx, target: discord.User, emoji: str):
 @bot.command()
 async def stopreact(ctx):
     bot.react_target_id = None
-    bot.react_emoji = None
-    await ui_send(ctx, "AUTOREACT", "Reaction stalking disabled.", "OFF", "31")
-
-@bot.command()
-async def mock(ctx, target: discord.User):
-    bot.mock_target = target.id
-    bot.uwu_target = None
-    await ui_send(ctx, "MOCK", f"Targeting: {target.name}", "ACTIVE", "31")
-
-@bot.command()
-async def uwu(ctx, target: discord.User):
-    bot.uwu_target = target.id
-    bot.mock_target = None
-    await ui_send(ctx, "UWU", f"Targeting: {target.name}", "ACTIVE", "35")
-
-@bot.command()
-async def unmock(ctx):
-    bot.mock_target = bot.uwu_target = None
-    await ui_send(ctx, "SOCIAL", "Mock/UwU disabled.", "CLEARED", "32")
-
-# ─── STATUS & SYSTEM ───
-@bot.command()
-async def clear(ctx):
-    await bot.change_presence(activity=None, status=bot.status_dot)
-    await ui_send(ctx, "STATUS", "RPC Cleared.", "CLEAN", "32")
+    await ui_send(ctx, "AUTOREACT", "Disabled.", "OFF", "31")
 
 @bot.command()
 async def rpc(ctx, *, text: str):
     await bot.change_presence(activity=discord.Streaming(name=text, url="https://twitch.tv/discord"), status=bot.status_dot)
     await ui_send(ctx, "RPC", f"Streaming: {text}", "SET", "35")
+
+@bot.command()
+async def clear(ctx):
+    await bot.change_presence(activity=None, status=bot.status_dot)
+    await ui_send(ctx, "STATUS", "Cleared.", "CLEAN", "32")
+
+@bot.command()
+async def stop(ctx):
+    bot.spamming = bot.rotating_bio = False
+    bot.mock_target = bot.uwu_target = bot.afk_reason = bot.react_target_id = None
+    await bot.change_presence(activity=None)
+    await ui_send(ctx, "STOP", "Killed all tasks.", "HALT", "31")
+
+# ─── REMAINING CMDS ───
+@bot.command()
+async def mock(ctx, target: discord.User):
+    bot.mock_target = target.id
+    bot.uwu_target = None
+    await ui_send(ctx, "MOCK", f"Target: {target.name}", "ACTIVE", "31")
+
+@bot.command()
+async def uwu(ctx, target: discord.User):
+    bot.uwu_target = target.id
+    bot.mock_target = None
+    await ui_send(ctx, "UWU", f"Target: {target.name}", "ACTIVE", "35")
+
+@bot.command()
+async def unmock(ctx):
+    bot.mock_target = bot.uwu_target = None
+    await ui_send(ctx, "SOCIAL", "Mock/UwU disabled.", "CLEARED", "32")
 
 @bot.command()
 async def dot(ctx, mode: str):
@@ -210,14 +215,6 @@ async def rotatebio(ctx, toggle: str):
         bot.rotating_bio = False
         await ui_send(ctx, "BIO", "Rotation: OFF", "31")
 
-@bot.command()
-async def stop(ctx):
-    bot.spamming = bot.rotating_bio = False
-    bot.mock_target = bot.uwu_target = bot.afk_reason = bot.react_target_id = None
-    await bot.change_presence(activity=None)
-    await ui_send(ctx, "STOP", "All tasks killed.", "HALT", "31")
-
-# ─── RUN ───
 if __name__ == "__main__":
     TOKEN = os.getenv("DISCORD_TOKEN")
     if TOKEN:
