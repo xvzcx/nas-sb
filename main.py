@@ -152,15 +152,37 @@ async def ping(ctx):
 # ─── SOCIAL COMMANDS ───
 
 @bot.command(aliases=['ar'])
-async def autoreact(ctx, *, args):
+async def autoreact(ctx, *, args=None):
     """Usage: ,ar @user emojis"""
-    try:
+    if not args:
+        return await ctx.send(ui("31", "ERROR", "Usage: `,ar @user [emojis]`"), delete_after=3)
+    
+    user = None
+    # Try getting user from mention first
+    if ctx.message.mentions:
         user = ctx.message.mentions[0]
-        emojis = args.replace(f"<@{user.id}>", "").replace(f"<@!{user.id}>", "").strip().split()
+    else:
+        # Fallback: Try to find a User ID in the args
+        id_match = re.search(r'(\d{17,20})', args)
+        if id_match:
+            try:
+                uid = int(id_match.group(1))
+                user = bot.get_user(uid) or await bot.fetch_user(uid)
+            except:
+                user = None
+
+    if user:
+        # Strip the mention/ID from the args to get just the emojis
+        clean_args = args.replace(f"<@{user.id}>", "").replace(f"<@!{user.id}>", "").replace(str(user.id), "").strip()
+        emojis = clean_args.split()
+        
+        if not emojis:
+            return await ctx.send(ui("31", "ERROR", "No emojis provided!"), delete_after=3)
+            
         bot.targets[user.id] = emojis
         await ctx.send(ui("32", "AR ADDED", f"User: [1;32m{user.name}[0m\nReacts: {' '.join(emojis)}"), delete_after=5)
-    except:
-        await ctx.send(ui("31", "ERROR", "Usage: `,ar @user [emojis]`"), delete_after=3)
+    else:
+        await ctx.send(ui("31", "ERROR", "Could not find user. Mention them or use their ID."), delete_after=3)
 
 @bot.command()
 async def stopreact(ctx, user: discord.User):
