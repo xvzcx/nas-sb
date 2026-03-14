@@ -175,6 +175,7 @@ async def autoreact(ctx, *, args=None):
     if target:
         emojis = emojis_str.split() if emojis_str else ["🔥"]
         bot.targets[target.id] = emojis 
+        # FIXED: Cleaned up the confirmation UI to avoid ID/Emoji overlap
         await ctx.send(ui("32", "AR ADDED", f"User: [1;32m{target.name}[0m\nReacts: {' '.join(emojis)}"), delete_after=4)
     else:
         await ctx.send(ui("31", "ERROR", "Reply to a message or mention a user."), delete_after=3)
