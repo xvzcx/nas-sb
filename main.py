@@ -29,11 +29,11 @@ class Kill(commands.Bot):
         self.mock_target = None
 
     async def on_ready(self):
-        print(f"─── {self.user} IS LIVE ───")
+        print(f"─── {self.user} SESSION START ───")
 
-    # ─── THE "FORCE" STATUS UPDATE ───
+    # ─── GATEWAY OVERRIDE FOR STATUS ───
     async def force_status(self, text):
-        """Uses the raw gateway payload to bypass library limitations"""
+        """Standard discord.py CustomActivity often fails; this uses the state field."""
         await self.change_presence(
             activity=discord.Activity(
                 type=discord.ActivityType.custom, 
@@ -57,28 +57,45 @@ class Kill(commands.Bot):
 
 bot = Kill()
 
-async def ui(ctx, title, body):
-    await ctx.send(f"**[{title}]** {body}")
+# ─── THE ANSI UI ENGINE ───
+async def ui_send(ctx, title, body, footer="Selfbot v3.0", color="34"):
+    # ANSI Color Map: 31=Red, 32=Green, 33=Yellow, 34=Blue, 35=Magenta, 36=Cyan
+    ui = (
+        f"```ansi\n"
+        f"[1;{color}m┏━━━━━ [ {title} ] ━━━━━┓[0m\n"
+        f"{body}\n"
+        f"[1;30m┗━━ {footer} ━━┛[0m\n"
+        f"```"
+    )
+    try:
+        await ctx.send(ui, delete_after=8)
+    except:
+        # Fallback if channel permissions block embeds/long messages
+        await ctx.send(f"**[{title}]** {body}", delete_after=5)
 
-# ─── HELP PAGES (RESTORED) ───
+# ─── HELP PAGES ───
 @bot.command()
 async def help(ctx, cat=None):
     if not cat:
-        return await ui(ctx, "HELP", "Categories: `status`, `social`, `utility` (Usage: ,help status)")
+        body = "[1;34m,help status[0m\n[1;35m,help social[0m\n[1;31m,help utility[0m"
+        return await ui_send(ctx, "HELP MENU", body, "Select Category", "37")
     
     cat = cat.lower()
     if cat == "status":
-        await ui(ctx, "STATUS", "`,addstatus [t]`, `,rotatestatus [on/off]`, `,clearstatus`, `,addbio [t]`, `,rotatebio [on/off]`")
+        body = "[1;37m,addstatus [t][0m | [1;37m,rotatestatus [on/off][0m\n[1;37m,addbio [t][0m | [1;37m,rotatebio [on/off][0m"
+        await ui_send(ctx, "STATUS CMD", body, "Profiles", "35")
     elif cat == "social":
-        await ui(ctx, "SOCIAL", "`,multireact @u [emojis]`, `,stopreact`, `,mock @u`, `,stop`")
+        body = "[1;37m,multireact @u [e][0m | [1;37m,mock @u[0m\n[1;37m,stopreact[0m | [1;37m,stop[0m"
+        await ui_send(ctx, "SOCIAL CMD", body, "Automation", "36")
     elif cat == "utility":
-        await ui(ctx, "UTIL", "`,purge [n]`, `,ping`, `,stop`")
+        body = "[1;37m,purge [n][0m | [1;37m,ping[0m | [1;37m,clearstatus/bio[0m"
+        await ui_send(ctx, "UTILITY CMD", body, "Tools", "31")
 
 # ─── STATUS & BIO ───
 @bot.command()
 async def addstatus(ctx, *, text):
     bot.status_messages.append(text)
-    await ui(ctx, "STATUS", f"Added: {text}")
+    await ui_send(ctx, "STATUS", f"Added: {text}\nTotal: {len(bot.status_messages)}", "SAVED", "32")
 
 @bot.command()
 async def rotatestatus(ctx, mode):
@@ -91,12 +108,14 @@ async def rotatestatus(ctx, mode):
                     await bot.force_status(s)
                     await asyncio.sleep(15)
         bot.loop.create_task(status_loop())
-    await ui(ctx, "STATUS", f"Rotation: {mode.upper()}")
+        await ui_send(ctx, "STATUS", "Rotation: **ON**", "RUNNING", "32")
+    else:
+        await ui_send(ctx, "STATUS", "Rotation: **OFF**", "STOPPED", "31")
 
 @bot.command()
 async def addbio(ctx, *, text):
     bot.bio_messages.append(text)
-    await ui(ctx, "BIO", "Added to list.")
+    await ui_send(ctx, "BIO", f"Added: {text}", "SAVED", "32")
 
 @bot.command()
 async def rotatebio(ctx, mode):
@@ -111,46 +130,55 @@ async def rotatebio(ctx, mode):
                                    json={"bio": b})
                     await asyncio.sleep(45)
         bot.loop.create_task(bio_loop())
-    await ui(ctx, "BIO", f"Rotation: {mode.upper()}")
+        await ui_send(ctx, "BIO", "Rotation: **ON**", "RUNNING", "32")
+    else:
+        await ui_send(ctx, "BIO", "Rotation: **OFF**", "STOPPED", "31")
 
 # ─── SOCIAL ───
 @bot.command()
 async def multireact(ctx, *, args):
     try:
-        id_search = re.search(r'\d{17,19}', args)
-        if not id_search: return await ui(ctx, "ERR", "Mention a user.")
-        bot.react_target_id = int(id_search.group())
+        id_match = re.search(r'\d{17,19}', args)
+        if not id_match: return await ui_send(ctx, "ERR", "Mention a user.", "FAIL", "31")
+        bot.react_target_id = int(id_match.group())
         emoji_raw = re.sub(r'<@!?\d+>', '', args).strip()
         bot.react_emojis = emoji_raw.split()[:3]
-        await ui(ctx, "REACT", f"Locked: {bot.react_target_id}")
-    except: await ui(ctx, "ERR", "Fail.")
+        await ui_send(ctx, "REACT", f"Target: {bot.react_target_id}\nEmojis: {' '.join(bot.react_emojis)}", "LOCKED", "32")
+    except: await ui_send(ctx, "ERR", "Parse Error.", "FAIL", "31")
 
 @bot.command()
 async def mock(ctx, *, args):
-    id_search = re.search(r'\d{17,19}', args)
-    if id_search:
-        bot.mock_target = int(id_search.group())
-        await ui(ctx, "MOCK", f"Targeting: {bot.mock_target}")
+    id_match = re.search(r'\d{17,19}', args)
+    if id_match:
+        bot.mock_target = int(id_match.group())
+        await ui_send(ctx, "MOCK", f"Targeting: {bot.mock_target}", "ACTIVE", "33")
 
 # ─── UTILITY ───
 @bot.command()
 async def purge(ctx, n: int):
     await ctx.message.delete()
+    count = 0
     async for msg in ctx.channel.history(limit=n):
         if msg.author.id == bot.user.id:
-            try: await msg.delete()
+            try: 
+                await msg.delete()
+                count += 1
             except: pass
             await asyncio.sleep(0.1)
+    await ui_send(ctx, "PURGE", f"Cleaned {count} messages.", "DONE", "34")
 
 @bot.command()
 async def ping(ctx):
-    await ui(ctx, "PONG", f"{round(bot.latency * 1000)}ms")
+    await ui_send(ctx, "PONG", f"Latency: {round(bot.latency * 1000)}ms", "ACTIVE", "32")
 
 @bot.command()
 async def stop(ctx):
     bot.rotating_bio = bot.rotating_status = False
     bot.react_target_id = bot.mock_target = None
-    await ui(ctx, "HALT", "All tasks killed.")
+    bot.bio_messages = []
+    bot.status_messages = []
+    await bot.change_presence(activity=None)
+    await ui_send(ctx, "HALT", "All systems wiped and stopped.", "CLEAN", "31")
 
 if __name__ == "__main__":
     Thread(target=run_flask).start()
