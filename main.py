@@ -22,26 +22,33 @@ bot.rotating_status = False
 
 @bot.event
 async def on_ready():
-    print(f"─── {bot.user} v6.4 STABLE ACTIVE ───")
+    print(f"─── {bot.user} v6.5 GHOST-PROOF ACTIVE ───")
 
 @bot.event
 async def on_message(message):
     await bot.process_commands(message)
     uid = int(message.author.id)
     
-    # 1. AFK LOGIC (SELF-OFF)
+    # ─── RE-ENGINEERED AFK LOGIC ───
     if message.author.id == bot.user.id:
-        # FIX: Only disable AFK if the message is NOT a command
-        if bot.afk_reason and not message.content.startswith(bot.command_prefix):
+        if bot.afk_reason:
+            # GATE 1: Ignore commands
+            if message.content.startswith(bot.command_prefix):
+                return
+            # GATE 2: Ignore the bot's own UI boxes
+            if "┏━" in message.content or "┛" in message.content:
+                return
+            
+            # If it passed both gates, it's a real message—turn off AFK
             bot.afk_reason = None
             await message.channel.send("`[AFK]` Disabled. Welcome back.", delete_after=3)
         return
 
-    # 2. AFK PING RESPONDER
+    # PING RESPONDER
     if bot.afk_reason and bot.user.mentioned_in(message):
         await message.channel.send(f"**[AFK]** {bot.afk_reason}", delete_after=5)
 
-    # 3. MULTI-STICK AR
+    # MULTI-STICK AR
     if uid in bot.targets:
         if not message.content.startswith(bot.command_prefix):
             for e in bot.targets[uid]:
@@ -50,7 +57,7 @@ async def on_message(message):
                     await asyncio.sleep(0.05) 
                 except: pass
 
-    # 4. TROLLING
+    # TROLLING
     if uid != int(bot.user.id):
         if bot.mock_target == uid:
             await message.channel.send("".join([c.upper() if i%2==0 else c.lower() for i,c in enumerate(message.content)]))
@@ -69,7 +76,12 @@ def ui(color, title, text):
         f"```"
     )
 
-# ─── UPDATED STATUS PAGE ───
+@bot.command()
+async def afk(ctx, *, reason="Away"):
+    bot.afk_reason = reason
+    await ctx.send(ui("33", "AFK", f"Status: [1;33mENABLED[0m\nReason: {reason}"), delete_after=5)
+
+# ─── REST OF CMDS ───
 
 @bot.command()
 async def help(ctx, cat=None):
@@ -87,26 +99,6 @@ async def help(ctx, cat=None):
     elif c == "utility":
         body = "[1;30m▸[0m `,spam [n] [t]` [1;30m▸[0m `,purge [n]`\n[1;30m▸[0m `,stop`         [1;30m▸[0m `,ping`"
         await ctx.send(ui("31", "UTILITY", body), delete_after=8)
-
-# ─── CORE COMMANDS ───
-
-@bot.command()
-async def afk(ctx, *, reason="Away"):
-    bot.afk_reason = reason
-    await ctx.send(ui("33", "AFK", f"Status: [1;33mENABLED[0m\nReason: {reason}"), delete_after=5)
-
-@bot.command()
-async def purge(ctx, n: int):
-    await ctx.message.delete()
-    count = 0
-    async for m in ctx.channel.history(limit=n + 5):
-        if m.author.id == bot.user.id:
-            try: 
-                await m.delete()
-                count += 1
-                if count >= n: break
-                await asyncio.sleep(0.02) 
-            except: pass
 
 @bot.command()
 async def stop(ctx):
