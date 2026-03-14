@@ -27,6 +27,7 @@ class Kill(commands.Bot):
         self.target_id = None
         self.react_emoji = None
         self.afk_reason = None
+        self.afk_lock = False # Prevents instant AFK removal
 
     async def on_ready(self):
         print(f"─── SESSION ACTIVE: {self.display_name} ({self.user}) ───")
@@ -49,13 +50,13 @@ class Kill(commands.Bot):
         
         # 3. Handle YOUR messages
         if message.author.id == self.user.id:
-            # If it's a command, run it and STOP (the return prevents clearing AFK)
+            # If it's a command, run it and EXIT immediately
             if message.content.startswith(self.command_prefix):
                 await self.process_commands(message)
                 return 
 
-            # If it's NOT a command and you are AFK, clear it
-            if self.afk_reason:
+            # If it's NOT a command and you aren't 'locked', clear AFK
+            if self.afk_reason and not self.afk_lock:
                 self.afk_reason = None
                 await ui_send(message.channel, "SYSTEM", "Welcome back! AFK removed.", "32")
 
@@ -81,7 +82,10 @@ def add_commands(bot: Kill):
     @bot.command()
     async def afk(ctx, *, reason="I'm away right now."):
         bot.afk_reason = reason
+        bot.afk_lock = True # Lock AFK so it can't be removed instantly
         await ui_send(ctx, "AFK", f"Status set: {reason}", "33")
+        await asyncio.sleep(3) # Give it 3 seconds to settle
+        bot.afk_lock = False
 
     @bot.command()
     async def react(ctx, target: str, emoji: str):
@@ -120,6 +124,7 @@ def add_commands(bot: Kill):
         bot.target_id = None
         bot.react_emoji = None
         bot.afk_reason = None
+        bot.afk_lock = False
         await ui_send(ctx, "SYSTEM", "Killed all tasks.", "31")
 
 # ─── Execution ───
