@@ -112,29 +112,42 @@ async def dot(ctx, mode):
 
 @bot.command()
 async def purge(ctx, n: int):
-    """Turbo-charged self-deletion"""
+    """Turbo-charged deletion for self-bots"""
     await ctx.message.delete()
-    deleted = 0
-    async for m in ctx.channel.history(limit=200):
+    count = 0
+    # Fetch a larger history chunk to avoid multiple API calls
+    async for m in ctx.channel.history(limit=min(n * 5, 500)):
         if m.author.id == bot.user.id:
             try:
                 await m.delete()
-                deleted += 1
-                if deleted >= n: break
-                await asyncio.sleep(0.005) 
-            except: continue
+                count += 1
+                if count >= n: break
+                await asyncio.sleep(0.01) # Near-instant but safe
+            except:
+                continue
 
 @bot.command()
 async def spam(ctx, n: int, *, text):
-    """Rapid-fire spamming engine"""
+    """Optimized rapid-fire spam"""
     bot.spamming = True
     for _ in range(n):
         if not bot.spamming: break
         try:
             await ctx.send(text)
-            await asyncio.sleep(0.25)
+            await asyncio.sleep(0.2) # Max safe speed
+        except discord.errors.Forbidden:
+            break
         except:
-            await asyncio.sleep(1) # Cooldown on rate limit
+            await asyncio.sleep(1) # Backoff for rate limits
+
+@bot.command()
+async def ping(ctx):
+    """Simple connection check"""
+    start = time.perf_counter()
+    message = await ctx.send("`Pinging...`")
+    end = time.perf_counter()
+    duration = (end - start) * 1000
+    await message.edit(content=f"**Latency:** `{int(bot.latency * 1000)}ms` | **API:** `{int(duration)}ms`")
 
 # ─── SOCIAL COMMANDS ───
 
