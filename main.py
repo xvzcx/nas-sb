@@ -28,7 +28,7 @@ class Kill(commands.Bot):
         self.target_id = None
         self.react_emoji = None
         self.afk_reason = None
-        self.afk_time = 0  # To track when AFK was set
+        self.afk_time = 0 
 
     async def on_ready(self):
         print(f"─── SESSION ACTIVE: {self.display_name} ({self.user}) ───")
@@ -37,7 +37,9 @@ class Kill(commands.Bot):
         # 1. AFK Auto-Responder (When OTHERS ping you)
         if self.afk_reason and self.user.mentioned_in(message) and message.author.id != self.user.id:
             try:
+                # Send the reply and return so we don't process this message further
                 await message.channel.send(f"**[AFK]** {self.afk_reason}", delete_after=10)
+                return 
             except: pass
 
         # 2. Auto-React Logic
@@ -47,18 +49,21 @@ class Kill(commands.Bot):
         
         # 3. Handle YOUR messages
         if message.author.id == self.user.id:
-            # If it's a command, process and STOP
+            # A. IGNORE own AFK responses
+            if message.content.startswith("**[AFK]**"):
+                return
+
+            # B. If it's a command, process and STOP
             if message.content.startswith(self.command_prefix):
                 await self.process_commands(message)
                 return
 
-            # --- THE TIME-GATE FIX ---
-            # If you are AFK, but you JUST set it (less than 2 seconds ago), ignore this message.
+            # C. AFK Removal (Only on REAL chat messages)
             if self.afk_reason:
+                # 2-second safety window to ignore the ,afk command message itself
                 if (time.time() - self.afk_time) < 2:
-                    return # Still in the "safety window"
+                    return
                 
-                # Otherwise, you've been AFK for a while and just sent a real message.
                 self.afk_reason = None
                 await ui_send(message.channel, "SYSTEM", "Welcome back! AFK removed.", "32")
 
@@ -84,7 +89,7 @@ def add_commands(bot: Kill):
     @bot.command()
     async def afk(ctx, *, reason="I'm away right now."):
         bot.afk_reason = reason
-        bot.afk_time = time.time() # Mark the EXACT second you set AFK
+        bot.afk_time = time.time() 
         await ui_send(ctx, "AFK", f"Status set: {reason}", "33")
 
     @bot.command()
