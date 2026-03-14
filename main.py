@@ -24,6 +24,7 @@ class Kill(commands.Bot):
         self.mock_target = None
         self.uwu_target = None
         self.react_target_id = None
+        self.last_react_id = None # Store for autoreact toggle
         self.react_emojis = [] 
         self.afk_reason = None
         self.afk_time = 0
@@ -75,17 +76,16 @@ class Kill(commands.Bot):
 
 bot = Kill()
 
-async def ui_send(ctx, title, body, footer="Selfbot v3.9", color="34"):
+async def ui_send(ctx, title, body, footer="Selfbot v4.0", color="34"):
     ui_box = f"```ansi\n[1;{color}m┏━━ [ {title} ] ━━┓[0m\n{body}\n[1;30m┗━━ {footer} ━━┛[0m\n```"
     try: await ctx.send(ui_box, delete_after=10)
     except: await ctx.send(f"**[{title}]** {body}")
 
-# ─── CLEAN HELP SYSTEM ───
+# ─── UPDATED HELP SYSTEM ───
 
 @bot.command()
 async def help(ctx, category=None):
     if not category:
-        # Descriptions removed per request
         body = "[1;34m,help status[0m\n[1;35m,help social[0m\n[1;31m,help util[0m"
         return await ui_send(ctx, "HELP MENU", body, "Select Category", "37")
     
@@ -94,13 +94,43 @@ async def help(ctx, category=None):
         body = "`,addstatus [t]` | `,rotatestatus [on/off]`\n`,addbio [t]` | `,rotatebio [on/off]`\n`,rpc [text]` | `,dot [color]` | `,clearstatus`"
         await ui_send(ctx, "HELP: STATUS", body, "Profile Controls", "35")
     elif cat == "social":
-        body = "`,mock @u` | `,uwu @u` | `,unmock`\n`,multireact @u [e]` | `,stopreact`"
+        body = "`,mock @u` | `,uwu @u` | `,unmock`\n`,multireact @u [e]` | `,autoreact [on/off]` | `,stopreact`"
         await ui_send(ctx, "HELP: SOCIAL", body, "Trolling Tools", "36")
     elif cat == "util":
         body = "`,spam [n] [t]` | `,purge [n]`\n`,afk [reason]` | `,ping` | `,stop`"
         await ui_send(ctx, "HELP: UTILITY", body, "Power Tools", "31")
 
-# ─── TURBO SPEED UTILITY ───
+# ─── SOCIAL COMMANDS (INCLUDING AUTOREACT) ───
+
+@bot.command()
+async def multireact(ctx, *, args):
+    try:
+        user_id = int(re.search(r'\d+', args).group())
+        emojis = re.sub(r'<@!?\d+>', '', args).strip().split()[:3]
+        bot.react_target_id = user_id
+        bot.last_react_id = user_id # Save for later toggle
+        bot.react_emojis = emojis
+        await ui_send(ctx, "REACT", f"Locked: {user_id}", "ACTIVE", "36")
+    except: await ui_send(ctx, "ERR", "Mention + Emojis", "FAIL", "31")
+
+@bot.command()
+async def autoreact(ctx, toggle):
+    if toggle.lower() == "on":
+        if bot.last_react_id:
+            bot.react_target_id = bot.last_react_id
+            await ui_send(ctx, "REACT", f"Re-activated: {bot.react_target_id}", "ON", "32")
+        else:
+            await ui_send(ctx, "REACT", "No previous target found.", "FAIL", "31")
+    else:
+        bot.react_target_id = None
+        await ui_send(ctx, "REACT", "Auto-react Disabled.", "OFF", "31")
+
+@bot.command()
+async def stopreact(ctx):
+    bot.react_target_id = None
+    await ui_send(ctx, "REACT", "Stopped.", "OFF", "31")
+
+# ─── TURBO UTILITY ───
 
 @bot.command()
 async def spam(ctx, n: int, *, text):
@@ -120,7 +150,7 @@ async def purge(ctx, n: int):
                 await asyncio.sleep(0.05) 
             except: pass
 
-# ─── THE ARSENAL ───
+# ─── THE REST ───
 
 @bot.command()
 async def addstatus(ctx, *, t):
@@ -139,11 +169,6 @@ async def rotatestatus(ctx, toggle):
     await ui_send(ctx, "STATUS", f"Rotation: {toggle.upper()}", "ACTIVE", "32")
 
 @bot.command()
-async def clearstatus(ctx):
-    bot.status_messages = []; bot.rotating_status = False
-    await ui_send(ctx, "STATUS", "Wiped all.", "CLEARED", "31")
-
-@bot.command()
 async def rpc(ctx, *, text):
     await bot.change_presence(activity=discord.Game(name=text)); await ui_send(ctx, "RPC", f"Playing: {text}", "GAME", "34")
 
@@ -152,36 +177,6 @@ async def dot(ctx, mode):
     modes = {"online": discord.Status.online, "idle": discord.Status.idle, "dnd": discord.Status.dnd, "invisible": discord.Status.invisible}
     bot.status_dot = modes.get(mode.lower(), discord.Status.online)
     await bot.change_presence(status=bot.status_dot); await ui_send(ctx, "DOT", f"Set: {mode.upper()}", "UPDATED", "34")
-
-@bot.command()
-async def addbio(ctx, *, text):
-    bot.bio_messages.append(text); await ui_send(ctx, "BIO", "Added.", "SAVED", "32")
-
-@bot.command()
-async def rotatebio(ctx, toggle):
-    bot.rotating_bio = (toggle.lower() == "on")
-    if bot.rotating_bio:
-        async def b_rot():
-            while bot.rotating_bio:
-                for t in bot.bio_messages:
-                    if not bot.rotating_bio: break
-                    requests.patch("https://discord.com/api/v9/users/@me", headers={"Authorization": os.getenv("DISCORD_TOKEN")}, json={"bio": t})
-                    await asyncio.sleep(45)
-        bot.loop.create_task(b_rot())
-    await ui_send(ctx, "BIO", f"Rotation: {toggle.upper()}", "ACTIVE", "32")
-
-@bot.command()
-async def multireact(ctx, *, args):
-    try:
-        user_id = int(re.search(r'\d+', args).group())
-        emojis = re.sub(r'<@!?\d+>', '', args).strip().split()[:3]
-        bot.react_target_id, bot.react_emojis = user_id, emojis
-        await ui_send(ctx, "REACT", f"Locked: {user_id}", "ACTIVE", "36")
-    except: await ui_send(ctx, "ERR", "Mention + Emojis", "FAIL", "31")
-
-@bot.command()
-async def stopreact(ctx):
-    bot.react_target_id = None; await ui_send(ctx, "REACT", "Stopped", "OFF", "31")
 
 @bot.command()
 async def mock(ctx, *, args):
@@ -198,18 +193,14 @@ async def unmock(ctx):
     bot.mock_target = bot.uwu_target = None; await ui_send(ctx, "TROLL", "Disabled.", "OFF", "31")
 
 @bot.command()
-async def afk(ctx, *, reason="Away"):
-    bot.afk_reason, bot.afk_time = reason, time.time(); await ui_send(ctx, "AFK", f"Reason: {reason}", "SET", "33")
+async def ping(ctx):
+    await ui_send(ctx, "PONG", f"{round(bot.latency * 1000)}ms", "ACTIVE", "32")
 
 @bot.command()
 async def stop(ctx):
     bot.spamming = bot.rotating_bio = bot.rotating_status = False
     bot.react_target_id = bot.mock_target = bot.uwu_target = None
     await ui_send(ctx, "STOP", "Everything halted.", "CLEAN", "31")
-
-@bot.command()
-async def ping(ctx):
-    await ui_send(ctx, "PONG", f"{round(bot.latency * 1000)}ms", "ACTIVE", "32")
 
 if __name__ == "__main__":
     Thread(target=run_flask).start()
