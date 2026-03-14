@@ -23,26 +23,24 @@ bot.rotating_status = False
 
 @bot.event
 async def on_ready():
-    print(f"─── {bot.user} v6.7 LOCKDOWN ACTIVE ───")
+    print(f"─── {bot.user} v6.8 FINAL ACTIVE ───")
 
 @bot.event
 async def on_message(message):
-    # 1. ALWAYS process commands first
     await bot.process_commands(message)
 
-    # 2. HARD FILTER FOR SELF-MESSAGES (AFK OFF)
+    # 1. HARD FILTER FOR SELF-MESSAGES (AFK OFF)
     if message.author.id == bot.user.id:
         if bot.afk_reason:
-            # ONLY disable AFK if it's NOT a command AND NOT a bot-sent UI message
             if not message.content.startswith(bot.command_prefix) and "┏━" not in message.content and "**[AFK]**" not in message.content:
                 bot.afk_reason = None
                 await message.channel.send("`[AFK]` Disabled. Welcome back.", delete_after=3)
-        return # STOP processing here if it's your own message
+        return
 
-    # 3. LOGIC FOR OTHERS (Pings, AR, Mock)
+    # 2. LOGIC FOR OTHERS
     uid = int(message.author.id)
 
-    # AFK PING RESPONDER & LOGGER
+    # AFK PING RESPONDER
     if bot.afk_reason and bot.user.mentioned_in(message) and not message.mention_everyone:
         timestamp = time.strftime("%H:%M:%S", time.localtime())
         log_entry = f"[1;30m[{timestamp}][0m [1;34m{message.author.name}[0m [1;30min[0m #{message.channel}"
@@ -58,12 +56,15 @@ async def on_message(message):
                     await asyncio.sleep(0.05) 
                 except: pass
 
-    # TROLLING
+    # ─── TROLLING (UWU FIXED) ───
     if bot.mock_target == uid:
         await message.channel.send("".join([c.upper() if i%2==0 else c.lower() for i,c in enumerate(message.content)]))
+    
     if bot.uwu_target == uid:
-        uwu_text = message.content.replace('r','w').replace('l','w').replace('R','W').replace('L','W')
-        await message.channel.send(f"{uwu_text} uwu")
+        # Replaces R/L with W and adds the uwu tag
+        content = message.content
+        uwu_map = str.maketrans({'r': 'w', 'l': 'w', 'R': 'W', 'L': 'W'})
+        await message.channel.send(f"{content.translate(uwu_map)} uwu")
 
 # ─── UI ENGINE ───
 def ui(color, title, text):
@@ -76,22 +77,33 @@ def ui(color, title, text):
         f"```"
     )
 
-# ─── AFK COMMANDS ───
+# ─── FIXED UWU COMMAND ───
+
+@bot.command()
+async def uwu(ctx, *, args=None):
+    """Target a user for uwu-fication. Usage: ,uwu @user or ,uwu [Reply]"""
+    id_m = None
+    if ctx.message.reference:
+        ref = await ctx.channel.fetch_message(ctx.message.reference.message_id)
+        id_m = ref.author.id
+    elif args:
+        match = re.search(r'\d+', args)
+        if match: id_m = int(match.group())
+
+    if id_m:
+        bot.uwu_target = id_m
+        user = bot.get_user(id_m) or await bot.fetch_user(id_m)
+        await ctx.send(ui("35", "UWU TARGET", f"Targeting: [1;35m{user.name}[0m"), delete_after=5)
+    else:
+        await ctx.send(ui("31", "ERROR", "Mention someone or reply."), delete_after=3)
+
+# ─── REST OF THE COMMANDS ───
 
 @bot.command()
 async def afk(ctx, *, reason="Away"):
     bot.afk_reason = reason
     bot.afk_log = [] 
     await ctx.send(ui("33", "AFK", f"Status: [1;33mENABLED[0m\nReason: {reason}"), delete_after=5)
-
-@bot.command()
-async def afklog(ctx):
-    if not bot.afk_log:
-        return await ctx.send(ui("34", "AFK LOG", "No pings recorded."), delete_after=5)
-    history = "\n".join(bot.afk_log[-10:])
-    await ctx.send(ui("34", "AFK LOG", history), delete_after=15)
-
-# ─── STATUS PAGE (RE-ALIGNED) ───
 
 @bot.command()
 async def help(ctx, cat=None):
