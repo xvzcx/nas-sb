@@ -28,11 +28,14 @@ class Kill(commands.Bot):
         self.react_emoji = None
         self.afk_reason = None
         self.afk_time = 0
+        self.afk_pings = 0
+        self.afk_log = []  # Stores names of people who pinged
         self.rotating_status = False
         self.status_messages = []
         self.status_dot = discord.Status.online
         self.dm_running = False
         self.mock_target = None
+        self.uwu_target = None
 
     async def on_ready(self):
         print(f"─── SESSION ACTIVE: {self.user} ───")
@@ -48,26 +51,40 @@ class Kill(commands.Bot):
                 )
                 await asyncio.sleep(5)
 
+    def sPoNgEbOb(self, text):
+        return "".join([char.upper() if i % 2 == 0 else char.lower() for i, char in enumerate(text)])
+
+    def uwuify(self, text):
+        text = text.replace('L', 'W').replace('R', 'W').replace('l', 'w').replace('r', 'w')
+        suffix = random.choice([" uwu", " owo", " >w<", " :3"])
+        return text + suffix
+
     async def on_message(self, message):
-        # 1. Mocking Logic
-        if self.mock_target and message.author.id == self.mock_target:
-            mocked_text = "".join([char.upper() if random.random() > 0.5 else char.lower() for char in message.content])
-            try: await message.channel.send(mocked_text)
-            except: pass
+        if message.author.id != self.user.id:
+            # Social Logic
+            if self.mock_target and message.author.id == self.mock_target:
+                try: await message.channel.send(self.sPoNgEbOb(message.content))
+                except: pass
+            
+            if self.uwu_target and message.author.id == self.uwu_target:
+                try: await message.channel.send(self.uwuify(message.content))
+                except: pass
 
-        # 2. AFK Responder
-        if self.afk_reason and self.user.mentioned_in(message) and message.author.id != self.user.id:
-            try:
-                await message.channel.send(f"**[AFK]** {self.afk_reason}", delete_after=10)
-                return 
-            except: pass
+            # AFK Responder & Logger
+            if self.afk_reason and self.user.mentioned_in(message):
+                self.afk_pings += 1
+                log_entry = f"**{message.author}** in #{message.channel}"
+                if log_entry not in self.afk_log:
+                    self.afk_log.append(log_entry)
+                try: await message.channel.send(f"**[AFK]** {self.afk_reason}", delete_after=10)
+                except: pass
 
-        # 3. Auto-React
-        if self.target_id and self.react_emoji and message.author.id == self.target_id:
-            try: await message.add_reaction(self.react_emoji)
-            except: pass
+            # Auto-React
+            if self.target_id and self.react_emoji and message.author.id == self.target_id:
+                try: await message.add_reaction(self.react_emoji)
+                except: pass
         
-        # 4. Command & AFK Management
+        # Self Management
         if message.author.id == self.user.id:
             if message.content.startswith("**[AFK]**"): return
             if message.content.startswith(self.command_prefix):
@@ -75,82 +92,76 @@ class Kill(commands.Bot):
                 return
             if self.afk_reason:
                 if (time.time() - self.afk_time) < 2: return
+                
+                # Report Log upon return
+                log_text = "\n".join(self.afk_log) if self.afk_log else "No pings recorded."
+                msg = (f"Welcome back!\n"
+                       f"Total Pings: **{self.afk_pings}**\n"
+                       f"[1;30mLogged Users:[0m\n{log_text}")
+                
                 self.afk_reason = None
-                await ui_send(message.channel, "SYSTEM", "Welcome back! AFK removed.", "32")
+                self.afk_pings = 0
+                self.afk_log = []
+                await ui_send(message.channel, "SYSTEM", msg, "AFK REMOVED", "32")
 
-# ─── UI Helper ───
+# ─── UI Helper (Set to 7 Seconds) ───
 async def ui_send(ctx, title, body, footer="Selfbot", color="34"):
     ui = (f"```ansi\n"
           f"[1;{color}m┏━━━━━━ [ {title} ] ━━━━━━┓[0m\n"
           f"{body}\n"
           f"[1;30m┗━━ {footer} ━━┛[0m\n```")
     dest = ctx.channel if hasattr(ctx, 'channel') else ctx
-    await dest.send(ui, delete_after=15)
+    await dest.send(ui, delete_after=7)
 
 # ─── Command Registration ───
 def add_commands(bot: Kill):
-    
     @bot.command()
     async def help(ctx, category: str = None):
         if category is None:
-            title = "HELP MENU"
-            body = ("[1;34m,help utility[0m - Tools & AFK\n"
-                    "[1;35m,help status[0m  - RPC & Dot\n"
-                    "[1;31m,help social[0m  - DMs & Fun")
-            footer = "Type a category name"
-            color = "37"
+            title, color = "HELP MENU", "37"
+            body = "[1;34m,help utility[0m\n[1;35m,help status[0m\n[1;31m,help social[0m"
         elif category.lower() == "utility":
-            title = "UTILITY CMDS"
-            body = ("[1;37m,afk [reason][0m - Set AFK\n"
-                    "[1;37m,purge [n][0m    - Clear msgs\n"
-                    "[1;37m,ping[0m         - Latency\n"
-                    "[1;37m,stop[0m         - Kill all")
-            footer = "Category: Utility"
-            color = "34"
+            title, color = "UTILITY CMDS", "34"
+            body = "[1;37m,afk [r][0m | [1;37m,purge [n][0m\n[1;37m,ping[0m | [1;37m,stop[0m"
         elif category.lower() == "status":
-            title = "STATUS CMDS"
-            body = ("[1;37m,dot [color][0m  - online/dnd/etc\n"
-                    "[1;37m,addmsg [tx][0m  - Add to list\n"
-                    "[1;37m,rotate [on][0m  - Start text\n"
-                    "[1;37m,rpc [text][0m   - Stream box")
-            footer = "Category: Status"
-            color = "35"
+            title, color = "STATUS CMDS", "35"
+            body = "[1;37m,dot [c][0m | [1;37m,rpc [t][0m\n[1;37m,addmsg [t][0m | [1;37m,rotate [on/off][0m"
         elif category.lower() == "social":
-            title = "SOCIAL CMDS"
-            body = ("[1;37m,mock [@u][0m    - Mock a user\n"
-                    "[1;37m,unmock[0m       - Stop mocking\n"
-                    "[1;37m,massdm [msg][0m - DM friends\n"
-                    "[1;37m,spam [n] [t][0m - Message spam")
-            footer = "Category: Social"
-            color = "31"
-        else: return await ui_send(ctx, "ERROR", "Invalid Category", "!", "31")
-        await ui_send(ctx, title, body, footer, color)
+            title, color = "SOCIAL CMDS", "31"
+            body = "[1;37m,mock [@u][0m | [1;37m,uwu [@u][0m\n[1;37m,unmock[0m | [1;37m,massdm [m][0m | [1;37m,spam [n] [t][0m"
+        else: return
+        await ui_send(ctx, title, body, f"Category: {category or 'Main'}", color)
 
     @bot.command()
     async def mock(ctx, target: str):
         bot.mock_target = int(re.search(r'\d+', target).group())
-        await ui_send(ctx, "MOCK", f"Mocking: <@{bot.mock_target}>", "TROLLING", "31")
+        bot.uwu_target = None
+        await ui_send(ctx, "MOCK", f"Targeting: <@{bot.mock_target}>", "TROLLING", "31")
+
+    @bot.command()
+    async def uwu(ctx, target: str):
+        bot.uwu_target = int(re.search(r'\d+', target).group())
+        bot.mock_target = None
+        await ui_send(ctx, "UWU", f"Targeting: <@{bot.uwu_target}>", "UWU", "35")
 
     @bot.command()
     async def unmock(ctx):
-        bot.mock_target = None
-        await ui_send(ctx, "MOCK", "Stopped mocking.", "CLEARED", "32")
+        bot.mock_target = bot.uwu_target = None
+        await ui_send(ctx, "SOCIAL", "Targets cleared.", "CLEARED", "32")
 
     @bot.command()
     async def ping(ctx):
-        ms = round(bot.latency * 1000)
-        await ui_send(ctx, "PONG", f"Latency: [1;32m{ms}ms[0m", "Active", "32")
+        await ui_send(ctx, "PONG", f"Latency: [1;32m{round(bot.latency * 1000)}ms[0m", "Active", "32")
 
     @bot.command()
-    async def afk(ctx, *, reason="I'm away."):
-        bot.afk_reason = reason
-        bot.afk_time = time.time()
-        await ui_send(ctx, "AFK", f"Status: {reason}", "AFK SET", "33")
+    async def afk(ctx, *, reason="Away."):
+        bot.afk_reason, bot.afk_time, bot.afk_pings, bot.afk_log = reason, time.time(), 0, []
+        await ui_send(ctx, "AFK", f"Reason: {reason}", "SET", "33")
 
     @bot.command()
-    async def purge(ctx, amount: int):
-        await ctx.channel.purge(limit=amount, check=lambda m: m.author.id == bot.user.id)
-        await ui_send(ctx, "PURGE", f"Cleared {amount}", "SUCCESS", "34")
+    async def purge(ctx, n: int):
+        await ctx.channel.purge(limit=n, check=lambda m: m.author.id == bot.user.id)
+        await ctx.send(f"```ansi\n[1;34m[ PURGE ][0m Cleared {n} messages.```", delete_after=2)
 
     @bot.command()
     async def rpc(ctx, *, text: str):
@@ -180,39 +191,13 @@ def add_commands(bot: Kill):
         await ui_send(ctx, "DOT", f"Mode: {mode.upper()}", "UPDATED", "34")
 
     @bot.command()
-    async def massdm(ctx, *, message: str):
-        bot.dm_running = True
-        await ui_send(ctx, "MASS DM", "Starting...", "RUNNING", "33")
-        for friend in bot.user.friends:
-            if not bot.dm_running: break
-            try:
-                await friend.send(message)
-                await asyncio.sleep(5)
-            except: pass
-        bot.dm_running = False
-        await ui_send(ctx, "MASS DM", "Done.", "DONE", "32")
-
-    @bot.command()
-    async def spam(ctx, amount: int, *, text: str):
-        bot.spamming = True
-        for _ in range(amount):
-            if not bot.spamming: break
-            await ctx.send(text)
-            await asyncio.sleep(0.5)
-        bot.spamming = False
-
-    @bot.command()
-    async def react(ctx, target: str, emoji: str):
-        bot.target_id = int(re.search(r'\d+', target).group())
-        bot.react_emoji = emoji
-        await ui_send(ctx, "REACT", f"Target: {bot.target_id}", "LOCKED", "32")
-
-    @bot.command()
     async def stop(ctx):
         bot.dm_running = bot.rotating_status = bot.spamming = False
-        bot.target_id = bot.afk_reason = bot.mock_target = None
+        bot.target_id = bot.afk_reason = bot.mock_target = bot.uwu_target = None
+        bot.afk_pings = 0
+        bot.afk_log = []
         await bot.change_presence(activity=None)
-        await ui_send(ctx, "SYSTEM", "Killed all tasks.", "HALT", "31")
+        await ui_send(ctx, "SYSTEM", "Everything stopped.", "HALT", "31")
 
 # ─── Execution ───
 if __name__ == "__main__":
@@ -221,4 +206,3 @@ if __name__ == "__main__":
         master_bot = Kill()
         add_commands(master_bot)
         master_bot.run(TOKEN)
-    
