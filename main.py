@@ -32,7 +32,7 @@ class Kill(commands.Bot):
         print(f"─── SESSION ACTIVE: {self.display_name} ({self.user}) ───")
 
     async def on_message(self, message):
-        # 1. AFK Auto-Responder (Triggered when you are mentioned)
+        # 1. AFK Auto-Responder (Triggered when others ping you)
         if self.afk_reason and self.user.mentioned_in(message) and message.author.id != self.user.id:
             try:
                 await message.channel.send(f"**[AFK]** {self.afk_reason}", delete_after=10)
@@ -47,16 +47,17 @@ class Kill(commands.Bot):
                 except:
                     pass
         
-        # 3. Process Commands and Self-Activity
-        if message.author.id != self.user.id:
-            return
+        # 3. Handle YOUR messages
+        if message.author.id == self.user.id:
+            # If it's a command, run it and STOP (the return prevents clearing AFK)
+            if message.content.startswith(self.command_prefix):
+                await self.process_commands(message)
+                return 
 
-        # 4. Auto-Disable AFK (Fixed: Won't trigger on commands)
-        if self.afk_reason and not message.content.startswith(self.command_prefix):
-            self.afk_reason = None
-            await ui_send(message.channel, "SYSTEM", "Welcome back! AFK removed.", "32")
-
-        await self.process_commands(message)
+            # If it's NOT a command and you are AFK, clear it
+            if self.afk_reason:
+                self.afk_reason = None
+                await ui_send(message.channel, "SYSTEM", "Welcome back! AFK removed.", "32")
 
 # ─── UI Helper (5s delete) ───
 async def ui_send(ctx, title, body, color="34"):
