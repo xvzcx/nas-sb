@@ -23,13 +23,11 @@ bot.rotating_status = False
 
 @bot.event
 async def on_ready():
-    print(f"─── {bot.user} v6.8 FINAL ACTIVE ───")
+    print(f"─── {bot.user} v6.9 OVERDRIVE ACTIVE ───")
 
 @bot.event
 async def on_message(message):
     await bot.process_commands(message)
-
-    # 1. HARD FILTER FOR SELF-MESSAGES (AFK OFF)
     if message.author.id == bot.user.id:
         if bot.afk_reason:
             if not message.content.startswith(bot.command_prefix) and "┏━" not in message.content and "**[AFK]**" not in message.content:
@@ -37,34 +35,23 @@ async def on_message(message):
                 await message.channel.send("`[AFK]` Disabled. Welcome back.", delete_after=3)
         return
 
-    # 2. LOGIC FOR OTHERS
     uid = int(message.author.id)
-
-    # AFK PING RESPONDER
     if bot.afk_reason and bot.user.mentioned_in(message) and not message.mention_everyone:
-        timestamp = time.strftime("%H:%M:%S", time.localtime())
-        log_entry = f"[1;30m[{timestamp}][0m [1;34m{message.author.name}[0m [1;30min[0m #{message.channel}"
-        bot.afk_log.append(log_entry)
         await message.channel.send(f"**[AFK]** {bot.afk_reason}", delete_after=5)
 
-    # MULTI-STICK AR
     if uid in bot.targets:
         if not message.content.startswith(bot.command_prefix):
             for e in bot.targets[uid]:
                 try: 
                     await message.add_reaction(e.strip())
-                    await asyncio.sleep(0.05) 
+                    await asyncio.sleep(0.04) 
                 except: pass
 
-    # ─── TROLLING (UWU FIXED) ───
     if bot.mock_target == uid:
         await message.channel.send("".join([c.upper() if i%2==0 else c.lower() for i,c in enumerate(message.content)]))
-    
     if bot.uwu_target == uid:
-        # Replaces R/L with W and adds the uwu tag
-        content = message.content
         uwu_map = str.maketrans({'r': 'w', 'l': 'w', 'R': 'W', 'L': 'W'})
-        await message.channel.send(f"{content.translate(uwu_map)} uwu")
+        await message.channel.send(f"{message.content.translate(uwu_map)} uwu")
 
 # ─── UI ENGINE ───
 def ui(color, title, text):
@@ -77,33 +64,33 @@ def ui(color, title, text):
         f"```"
     )
 
-# ─── FIXED UWU COMMAND ───
+# ─── TURBO UTILITY COMMANDS ───
 
 @bot.command()
-async def uwu(ctx, *, args=None):
-    """Target a user for uwu-fication. Usage: ,uwu @user or ,uwu [Reply]"""
-    id_m = None
-    if ctx.message.reference:
-        ref = await ctx.channel.fetch_message(ctx.message.reference.message_id)
-        id_m = ref.author.id
-    elif args:
-        match = re.search(r'\d+', args)
-        if match: id_m = int(match.group())
-
-    if id_m:
-        bot.uwu_target = id_m
-        user = bot.get_user(id_m) or await bot.fetch_user(id_m)
-        await ctx.send(ui("35", "UWU TARGET", f"Targeting: [1;35m{user.name}[0m"), delete_after=5)
-    else:
-        await ctx.send(ui("31", "ERROR", "Mention someone or reply."), delete_after=3)
-
-# ─── REST OF THE COMMANDS ───
+async def purge(ctx, n: int):
+    """Ultra-fast self-purge"""
+    await ctx.message.delete()
+    count = 0
+    # Higher limit check to find n messages quickly
+    async for m in ctx.channel.history(limit=n + 20):
+        if m.author.id == bot.user.id:
+            try: 
+                await m.delete()
+                count += 1
+                if count >= n: break
+                await asyncio.sleep(0.01) # Near-instant
+            except: pass
 
 @bot.command()
-async def afk(ctx, *, reason="Away"):
-    bot.afk_reason = reason
-    bot.afk_log = [] 
-    await ctx.send(ui("33", "AFK", f"Status: [1;33mENABLED[0m\nReason: {reason}"), delete_after=5)
+async def spam(ctx, n: int, *, t):
+    """Rapid-fire spam"""
+    bot.spamming = True
+    for _ in range(n):
+        if not bot.spamming: break
+        await ctx.send(t)
+        await asyncio.sleep(0.25) # Maximum safe speed
+
+# ─── HELP & CORE ───
 
 @bot.command()
 async def help(ctx, cat=None):
@@ -126,8 +113,12 @@ async def help(ctx, cat=None):
 async def stop(ctx):
     bot.spamming = bot.rotating_status = False
     bot.targets = {}; bot.mock_target = bot.uwu_target = bot.afk_reason = None
-    bot.afk_log = []
     await ctx.send(ui("31", "HALT", "[1;31mAll tasks killed.[0m"), delete_after=3)
+
+@bot.command()
+async def afk(ctx, *, reason="Away"):
+    bot.afk_reason = reason
+    await ctx.send(ui("33", "AFK", f"Status: [1;33mENABLED[0m\nReason: {reason}"), delete_after=5)
 
 if __name__ == "__main__":
     Thread(target=run_flask).start()
