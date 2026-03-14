@@ -35,30 +35,29 @@ class Kill(commands.Bot):
         # 1. AFK Auto-Responder (When OTHERS ping you)
         if self.afk_reason and self.user.mentioned_in(message) and message.author.id != self.user.id:
             try:
-                # We use a slight delay so it doesn't trigger the "Welcome Back" on itself
                 await message.channel.send(f"**[AFK]** {self.afk_reason}", delete_after=10)
             except:
                 pass
 
         # 2. Auto-React Logic
-        if self.target_id and self.react_emoji and message.author.id == self.target_id:
-            try:
-                await message.add_reaction(self.react_emoji)
-            except:
-                pass
+        if self.target_id and self.react_emoji:
+            if message.author.id == self.target_id:
+                try:
+                    await message.add_reaction(self.react_emoji)
+                except:
+                    pass
         
-        # 3. Handle YOUR messages only
+        # 3. Handle YOUR messages
         if message.author.id == self.user.id:
-            # Check if this is a command
-            is_cmd = message.content.startswith(self.command_prefix)
-            
-            # If you are AFK and you send a normal message (NOT a command)
-            if self.afk_reason and not is_cmd:
+            # Check if this is a command (starts with ,)
+            if message.content.startswith(self.command_prefix):
+                await self.process_commands(message)
+                return  # <--- CRITICAL: Stops the code here so AFK doesn't clear
+
+            # 4. AFK Auto-Disable (Only triggers on normal chat messages)
+            if self.afk_reason:
                 self.afk_reason = None
                 await ui_send(message.channel, "SYSTEM", "Welcome back! AFK removed.", "32")
-            
-            # Process the command if it is one
-            await self.process_commands(message)
 
 # ─── UI Helper (5s delete) ───
 async def ui_send(ctx, title, body, color="34"):
@@ -66,6 +65,7 @@ async def ui_send(ctx, title, body, color="34"):
           f"[1;30m────────────────────────────────[0m\n"
           f"{body}\n"
           f"[1;30m────────────────────────────────[0m\n```")
+    # Determine destination (ctx can be a Context object or a Channel object)
     dest = ctx.channel if hasattr(ctx, 'channel') else ctx
     await dest.send(ui, delete_after=5)
 
@@ -91,6 +91,8 @@ def add_commands(bot: Kill):
             bot.target_id = int(user_id_match.group())
             bot.react_emoji = emoji
             await ui_send(ctx, "AUTO-REACT", f"Targeting: {bot.target_id}", "32")
+        else:
+            await ui_send(ctx, "ERROR", "Invalid User/ID", "31")
 
     @bot.command()
     async def sr(ctx):
