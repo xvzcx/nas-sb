@@ -37,10 +37,10 @@ async def on_message(message):
             if not message.content.startswith(bot.command_prefix) and "┏━" not in message.content and "**[AFK]**" not in message.content:
                 bot.afk_reason = None
                 await message.channel.send("`[AFK]` Disabled. Welcome back.", delete_after=3)
-        return # Stop processing here if it's your own message to prevent self-triggering
+        return 
 
-    # 3. LOGIC FOR OTHERS (Pings, AR, Mock, UwU)
-    uid = int(message.author.id)
+    # 3. LOGIC FOR OTHERS
+    uid = message.author.id
 
     # AFK PING RESPONDER & LOGGER
     if bot.afk_reason and bot.user.mentioned_in(message) and not message.mention_everyone:
@@ -49,14 +49,15 @@ async def on_message(message):
         bot.afk_log.append(log_entry)
         await message.channel.send(f"**[AFK]** {bot.afk_reason}", delete_after=5)
 
-    # STICKY AR ENGINE
+    # STICKY AR ENGINE (FIXED: Ensure integer comparison and clean loop)
     if uid in bot.targets:
-        if not message.content.startswith(bot.command_prefix):
-            for e in bot.targets[uid]:
-                try: 
-                    await message.add_reaction(e.strip())
-                    await asyncio.sleep(0.05) 
-                except: pass
+        emojis = bot.targets[uid]
+        for e in emojis:
+            try: 
+                await message.add_reaction(e.strip())
+                await asyncio.sleep(0.05) 
+            except: 
+                continue
 
     # TROLLING LOGIC
     if bot.mock_target == uid:
@@ -115,14 +116,13 @@ async def purge(ctx, n: int):
     """Turbo-charged deletion for self-bots"""
     await ctx.message.delete()
     count = 0
-    # Fetch a larger history chunk to avoid multiple API calls
     async for m in ctx.channel.history(limit=min(n * 5, 500)):
         if m.author.id == bot.user.id:
             try:
                 await m.delete()
                 count += 1
                 if count >= n: break
-                await asyncio.sleep(0.01) # Near-instant but safe
+                await asyncio.sleep(0.01)
             except:
                 continue
 
@@ -134,11 +134,11 @@ async def spam(ctx, n: int, *, text):
         if not bot.spamming: break
         try:
             await ctx.send(text)
-            await asyncio.sleep(0.2) # Max safe speed
+            await asyncio.sleep(0.2)
         except discord.errors.Forbidden:
             break
         except:
-            await asyncio.sleep(1) # Backoff for rate limits
+            await asyncio.sleep(1)
 
 @bot.command()
 async def ping(ctx):
@@ -153,24 +153,31 @@ async def ping(ctx):
 
 @bot.command(aliases=['ar'])
 async def autoreact(ctx, *, args=None):
+    """Sets AR. Usage: ,ar @user emojis OR reply to message with ,ar emojis"""
     target = None
+    emojis_str = args
+
     if ctx.message.reference:
         ref = await ctx.channel.fetch_message(ctx.message.reference.message_id)
-        target, raw_emojis = ref.author, (args if args else "🔥")
+        target = ref.author
     elif args:
-        if "me" in args.lower():
-            target, raw_emojis = bot.user, args.lower().replace("me", "").strip()
-        else:
-            id_match = re.search(r'\d+', args)
-            if id_match:
-                uid = int(id_match.group())
-                target = bot.get_user(uid) or await bot.fetch_user(uid)
-                raw_emojis = re.sub(r'<@!?\d+>', '', args).strip()
+        # Check for mention or ID
+        id_match = re.search(r'\d+', args)
+        if id_match:
+            uid = int(id_match.group())
+            target = bot.get_user(uid) or await bot.fetch_user(uid)
+            # Remove mention/ID from args to get just emojis
+            emojis_str = re.sub(r'<@!?\d+>', '', args).strip()
+        elif "me" in args.lower():
+            target = bot.user
+            emojis_str = args.lower().replace("me", "").strip()
 
     if target:
-        emojis = raw_emojis.split() if raw_emojis else ["🔥"]
-        bot.targets[int(target.id)] = emojis 
+        emojis = emojis_str.split() if emojis_str else ["🔥"]
+        bot.targets[target.id] = emojis 
         await ctx.send(ui("32", "AR ADDED", f"User: [1;32m{target.name}[0m\nReacts: {' '.join(emojis)}"), delete_after=4)
+    else:
+        await ctx.send(ui("31", "ERROR", "Reply to a message or mention a user."), delete_after=3)
 
 @bot.command()
 async def stopreact(ctx, *, args=None):
@@ -182,7 +189,7 @@ async def stopreact(ctx, *, args=None):
     tid = None
     if ctx.message.reference:
         ref = await ctx.channel.fetch_message(ctx.message.reference.message_id)
-        tid = int(ref.author.id)
+        tid = ref.author.id
     elif args:
         match = re.search(r'\d+', args)
         if match: tid = int(match.group())
@@ -191,7 +198,7 @@ async def stopreact(ctx, *, args=None):
         bot.targets.pop(tid)
         await ctx.send(ui("31", "AR REMOVED", f"Stopped: {tid}"), delete_after=3)
     else:
-        await ctx.send(ui("31", "ERROR", "Target not found."), delete_after=3)
+        await ctx.send(ui("31", "ERROR", "Target not found in AR list."), delete_after=3)
 
 @bot.command()
 async def targets(ctx):
@@ -202,7 +209,7 @@ async def targets(ctx):
     lines = []
     for tid, emojis in bot.targets.items():
         user = bot.get_user(tid)
-        name = user.name if user else tid
+        name = user.name if user else f"User({tid})"
         lines.append(f"[1;30m•[0m [1;34m{name}[0m [1;30m»[0m {' '.join(emojis)}")
     
     await ctx.send(ui("34", "REGISTRY", "\n".join(lines)), delete_after=10)
