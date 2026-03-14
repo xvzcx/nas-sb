@@ -23,16 +23,11 @@ class Kill(commands.Bot):
         super().__init__(command_prefix=",", self_bot=True, help_command=None)
         self.spamming = False
         self.afk_reason = None
-        self.afk_time = 0
-        self.afk_pings = 0
-        self.afk_log = []
-        self.mock_target = None
-        self.uwu_target = None
         self.react_target_id = None
         self.react_emojis = [] 
         self.status_dot = discord.Status.online
         
-        # Profile Rotation States
+        # Profile Rotation
         self.rotating_bio = False
         self.bio_messages = []
         self.rotating_status = False
@@ -41,44 +36,40 @@ class Kill(commands.Bot):
     async def on_ready(self):
         print(f"─── SESSION ACTIVE: {self.user} ───")
 
-    # ─── API POCKET ───
     def update_profile_bio(self, text):
         url = "https://discord.com/api/v9/users/@me"
         headers = {"Authorization": os.getenv("DISCORD_TOKEN"), "Content-Type": "application/json"}
         try: requests.patch(url, headers=headers, json={"bio": text})
         except: pass
 
-    # ─── ROTATION LOOPS ───
     async def bio_rotator(self):
         while self.rotating_bio:
-            if not self.bio_messages: break
             for text in self.bio_messages:
                 if not self.rotating_bio: break
                 self.update_profile_bio(text)
-                await asyncio.sleep(45) # Bio must stay slow (Strict API)
+                await asyncio.sleep(45)
 
     async def status_rotator(self):
         while self.rotating_status:
-            if not self.status_messages: break
             for text in self.status_messages:
                 if not self.rotating_status: break
-                # ─── TURBO STATUS UPDATE ───
                 try:
                     await self.change_presence(activity=discord.CustomActivity(name=text), status=self.status_dot)
                 except: pass
-                await asyncio.sleep(12) # FAST: 12 seconds
+                await asyncio.sleep(12)
 
     async def on_message(self, message):
+        # CRITICAL: Always process commands first
+        if message.author.id == self.user.id:
+            await self.process_commands(message)
+
+        # ─── AUTO-REACT ───
         if self.react_target_id and message.author.id == self.react_target_id:
             for emoji in self.react_emojis:
                 try: 
                     await message.add_reaction(emoji.strip())
                     await asyncio.sleep(0.05) 
                 except: pass
-
-        if message.author.id == self.user.id:
-            await self.process_commands(message)
-            return
 
 # ─── UI HELPER ───
 async def ui_send(ctx, title, body, footer="Selfbot", color="34"):
@@ -88,7 +79,7 @@ async def ui_send(ctx, title, body, footer="Selfbot", color="34"):
 
 bot = Kill()
 
-# ─── STATUS ROTATION ───
+# ─── STATUS COMMANDS ───
 @bot.command()
 async def addstatus(ctx, *, text: str):
     bot.status_messages.append(text)
@@ -103,16 +94,15 @@ async def clearstatus(ctx):
 @bot.command()
 async def rotatestatus(ctx, toggle: str):
     if toggle.lower() == "on":
-        if not bot.status_messages:
-            return await ui_send(ctx, "ERROR", "Add statuses first.", "FAIL", "31")
+        if not bot.status_messages: return await ui_send(ctx, "FAIL", "Add statuses first.", "ERROR", "31")
         bot.rotating_status = True
         bot.loop.create_task(bot.status_rotator())
-        await ui_send(ctx, "STATUS", "Turbo Rotation: **ON** (12s)", "FAST", "35")
+        await ui_send(ctx, "STATUS", "Turbo Status: **ON**", "12s DELAY", "35")
     else:
         bot.rotating_status = False
         await ui_send(ctx, "STATUS", "Rotation: **OFF**", "STOPPED", "31")
 
-# ─── BIO ROTATION ───
+# ─── BIO COMMANDS ───
 @bot.command()
 async def addbio(ctx, *, text: str):
     bot.bio_messages.append(text)
@@ -134,7 +124,7 @@ async def rotatebio(ctx, toggle: str):
         bot.rotating_bio = False
         await ui_send(ctx, "BIO", "Rotation: OFF", "31")
 
-# ─── REMAINING SYSTEM COMMANDS ───
+# ─── SOCIAL COMMANDS ───
 @bot.command()
 async def multireact(ctx, *, args: str):
     try:
@@ -142,12 +132,19 @@ async def multireact(ctx, *, args: str):
         emoji_raw = re.sub(r'<@!?\d+>', '', args).strip()
         customs = re.findall(r'<a?:\w+:\d+>', emoji_raw)
         unicodes = [c for c in emoji_raw.split() if not c.startswith('<')]
-        final_emojis = (customs + unicodes)[:3]
         bot.react_target_id = user_id
-        bot.react_emojis = final_emojis
-        await ui_send(ctx, "MULTI-REACT", f"Target: {user_id}\nEmojis: {' '.join(final_emojis)}", "LOCKED", "32")
-    except: pass
+        bot.react_emojis = (customs + unicodes)[:3]
+        await ui_send(ctx, "MULTI-REACT", f"Target: {user_id}\nEmojis: {' '.join(bot.react_emojis)}", "LOCKED", "32")
+    except:
+        await ui_send(ctx, "ERROR", "Usage: ,multireact @user 🔥 💀", "FAIL", "31")
 
+@bot.command()
+async def stopreact(ctx):
+    bot.react_target_id = None
+    bot.react_emojis = []
+    await ui_send(ctx, "SOCIAL", "Auto-react disabled.", "OFF", "31")
+
+# ─── UTILITY COMMANDS ───
 @bot.command()
 async def purge(ctx, n: int):
     await ctx.message.delete()
@@ -162,13 +159,19 @@ async def purge(ctx, n: int):
     await ctx.send(f"```ansi\n[1;34m[ PURGE ][0m Cleared {count} messages.```", delete_after=2)
 
 @bot.command()
+async def clear(ctx):
+    """Clears RPC/Presence"""
+    await bot.change_presence(activity=None, status=bot.status_dot)
+    await ui_send(ctx, "RPC", "Cleared Presence.", "CLEAN", "32")
+
+@bot.command()
 async def stop(ctx):
     bot.spamming = bot.rotating_bio = bot.rotating_status = False
     bot.react_target_id = None
     bot.bio_messages = []
     bot.status_messages = []
     await bot.change_presence(activity=None)
-    await ui_send(ctx, "STOP", "Halted everything.", "HALT", "31")
+    await ui_send(ctx, "STOP", "Wiped all data and halted.", "HALT", "31")
 
 if __name__ == "__main__":
     TOKEN = os.getenv("DISCORD_TOKEN")
