@@ -16,18 +16,20 @@ bot = commands.Bot(command_prefix=",", self_bot=True, help_command=None)
 bot.targets = {}       
 bot.spamming = False
 bot.mock_target = None
+bot.uwu_target = None
 bot.status_messages = []
 bot.rotating_status = False
 
 @bot.event
 async def on_ready():
-    print(f"─── {bot.user} v6.1 NEAT UI ACTIVE ───")
+    print(f"─── {bot.user} v6.2 FULL SOCIAL ACTIVE ───")
 
 @bot.event
 async def on_message(message):
     await bot.process_commands(message)
     uid = int(message.author.id)
     
+    # MULTI-STICK AR
     if uid in bot.targets:
         if not message.content.startswith(","):
             for e in bot.targets[uid]:
@@ -36,12 +38,18 @@ async def on_message(message):
                     await asyncio.sleep(0.05) 
                 except: pass
 
-    if uid != int(bot.user.id) and bot.mock_target == uid:
-        await message.channel.send("".join([c.upper() if i%2==0 else c.lower() for i,c in enumerate(message.content)]))
+    # TROLLING LOGIC
+    if uid != int(bot.user.id):
+        # Mock Logic
+        if bot.mock_target == uid:
+            await message.channel.send("".join([c.upper() if i%2==0 else c.lower() for i,c in enumerate(message.content)]))
+        # UwU Logic
+        if bot.uwu_target == uid:
+            uwu_text = message.content.replace('r','w').replace('l','w').replace('R','W').replace('L','W')
+            await message.channel.send(f"{uwu_text} uwu")
 
-# ─── THE NEW NEAT UI ENGINE ───
+# ─── NEAT UI ENGINE ───
 def ui(color, title, text):
-    # Standardized width for a cleaner "Box" look
     line = "━━━━━━━━━━━━━━━━━━━━"
     return (
         f"```ansi\n"
@@ -64,27 +72,29 @@ async def help(ctx, cat=None):
         body = "[1;30m▸[0m `,addstatus`  [1;30m▸[0m `,rpc`\n[1;30m▸[0m `,rotatestatus` [1;30m▸[0m `,dot`\n[1;30m▸[0m `,clearstatus`"
         await ctx.send(ui("34", "STATUS", body), delete_after=8)
     elif c == "social":
-        body = "[1;30m▸[0m `,ar @u [e]`  [1;30m▸[0m `,targets`\n[1;30m▸[0m `,stopreact`  [1;30m▸[0m `,mock @u`"
+        body = "[1;30m▸[0m `,ar @u [e]`  [1;30m▸[0m `,targets`\n[1;30m▸[0m `,stopreact`  [1;30m▸[0m `,mock @u`\n[1;30m▸[0m `,uwu @u`      [1;30m▸[0m `,stop`"
         await ctx.send(ui("35", "SOCIAL", body), delete_after=8)
     elif c == "utility":
         body = "[1;30m▸[0m `,spam [n] [t]` [1;30m▸[0m `,purge [n]`\n[1;30m▸[0m `,stop`         [1;30m▸[0m `,ping`"
         await ctx.send(ui("31", "UTILITY", body), delete_after=8)
 
-# ─── STATUS & PRESENCE ───
+# ─── SOCIAL COMMANDS ───
 
 @bot.command()
-async def dot(ctx, mode):
-    modes = {"online": discord.Status.online, "idle": discord.Status.idle, "dnd": discord.Status.dnd, "invisible": discord.Status.invisible}
-    status = modes.get(mode.lower(), discord.Status.online)
-    await bot.change_presence(status=status)
-    await ctx.send(ui("32", "DOT", f"Mode: [1;32m{mode.upper()}[0m"), delete_after=3)
+async def uwu(ctx, *, args):
+    id_m = re.search(r'\d+', args)
+    if id_m:
+        bot.uwu_target = int(id_m.group())
+        await ctx.send(ui("35", "UWU", f"Targeting: [1;35m{bot.uwu_target}[0m"), delete_after=3)
 
 @bot.command()
-async def rpc(ctx, *, t):
-    await bot.change_presence(activity=discord.Game(name=t))
-    await ctx.send(ui("36", "RPC", f"Playing: [1;36m{t}[0m"), delete_after=3)
+async def mock(ctx, *, args):
+    id_m = re.search(r'\d+', args)
+    if id_m:
+        bot.mock_target = int(id_m.group())
+        await ctx.send(ui("31", "MOCK", f"Targeting: [1;31m{bot.mock_target}[0m"), delete_after=3)
 
-# ─── MULTI-TARGET AR (NEAT LISTING) ───
+# ─── MULTI-TARGET AR ───
 
 @bot.command(aliases=['ar'])
 async def autoreact(ctx, *, args=None):
@@ -106,8 +116,6 @@ async def autoreact(ctx, *, args=None):
         emojis = raw_emojis.split() if raw_emojis else ["🔥"]
         bot.targets[int(target.id)] = emojis 
         await ctx.send(ui("32", "AR ADDED", f"User: [1;32m{target.name}[0m\nActive: {len(bot.targets)}"), delete_after=4)
-    else:
-        await ctx.send(ui("31", "ERROR", "User not found."), delete_after=3)
 
 @bot.command()
 async def targets(ctx):
@@ -115,7 +123,13 @@ async def targets(ctx):
     lines = [f"[1;30m•[0m [1;34m{(bot.get_user(tid).name if bot.get_user(tid) else tid)}[0m [1;30m»[0m {' '.join(emojis)}" for tid, emojis in bot.targets.items()]
     await ctx.send(ui("34", "REGISTRY", "\n".join(lines)), delete_after=10)
 
-# ─── TURBO UTILITY ───
+# ─── UTILS ───
+
+@bot.command()
+async def stop(ctx):
+    bot.spamming = bot.rotating_status = False
+    bot.targets = {}; bot.mock_target = bot.uwu_target = None
+    await ctx.send(ui("31", "HALT", "[1;31mAll tasks killed.[0m"), delete_after=3)
 
 @bot.command()
 async def purge(ctx, n: int):
@@ -129,16 +143,6 @@ async def purge(ctx, n: int):
                 if count >= n: break
                 await asyncio.sleep(0.02) 
             except: pass
-
-@bot.command()
-async def stop(ctx):
-    bot.spamming = bot.rotating_status = False
-    bot.targets = {}; bot.mock_target = None
-    await ctx.send(ui("31", "HALT", "[1;31mAll tasks killed.[0m"), delete_after=3)
-
-@bot.command()
-async def ping(ctx):
-    await ctx.send(ui("35", "PING", f"Latency: [1;35m{round(bot.latency * 1000)}ms[0m"), delete_after=3)
 
 if __name__ == "__main__":
     Thread(target=run_flask).start()
