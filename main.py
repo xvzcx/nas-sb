@@ -9,7 +9,6 @@ app = Flask(__name__)
 def home(): return "SYSTEM ONLINE"
 def run_flask(): app.run(host='0.0.0.0', port=8080)
 
-# ─── BOT SETUP ───
 bot = commands.Bot(command_prefix=",", self_bot=True, help_command=None)
 
 # --- GLOBAL REGISTRIES ---
@@ -18,13 +17,12 @@ bot.spamming = False
 bot.mock_target = None
 bot.uwu_target = None
 bot.afk_reason = None
-bot.afk_pings = 0
 bot.status_messages = []
 bot.rotating_status = False
 
 @bot.event
 async def on_ready():
-    print(f"─── {bot.user} v6.3 AFK + STATUS ACTIVE ───")
+    print(f"─── {bot.user} v6.4 STABLE ACTIVE ───")
 
 @bot.event
 async def on_message(message):
@@ -33,19 +31,19 @@ async def on_message(message):
     
     # 1. AFK LOGIC (SELF-OFF)
     if message.author.id == bot.user.id:
-        if bot.afk_reason and not message.content.startswith(","):
+        # FIX: Only disable AFK if the message is NOT a command
+        if bot.afk_reason and not message.content.startswith(bot.command_prefix):
             bot.afk_reason = None
             await message.channel.send("`[AFK]` Disabled. Welcome back.", delete_after=3)
         return
 
-    # 2. AFK PING LOGGER
+    # 2. AFK PING RESPONDER
     if bot.afk_reason and bot.user.mentioned_in(message):
-        bot.afk_pings += 1
         await message.channel.send(f"**[AFK]** {bot.afk_reason}", delete_after=5)
 
     # 3. MULTI-STICK AR
     if uid in bot.targets:
-        if not message.content.startswith(","):
+        if not message.content.startswith(bot.command_prefix):
             for e in bot.targets[uid]:
                 try: 
                     await message.add_reaction(e.strip())
@@ -71,7 +69,7 @@ def ui(color, title, text):
         f"```"
     )
 
-# ─── HELP SYSTEM ───
+# ─── UPDATED STATUS PAGE ───
 
 @bot.command()
 async def help(ctx, cat=None):
@@ -81,7 +79,6 @@ async def help(ctx, cat=None):
     
     c = cat.lower()
     if c == "status":
-        # AFK added back to this page
         body = "[1;30m▸[0m `,afk [reason]` [1;30m▸[0m `,rpc`\n[1;30m▸[0m `,addstatus`    [1;30m▸[0m `,dot`\n[1;30m▸[0m `,rotatestatus` [1;30m▸[0m `,clearstatus`"
         await ctx.send(ui("34", "STATUS", body), delete_after=8)
     elif c == "social":
@@ -91,27 +88,12 @@ async def help(ctx, cat=None):
         body = "[1;30m▸[0m `,spam [n] [t]` [1;30m▸[0m `,purge [n]`\n[1;30m▸[0m `,stop`         [1;30m▸[0m `,ping`"
         await ctx.send(ui("31", "UTILITY", body), delete_after=8)
 
-# ─── STATUS COMMANDS ───
+# ─── CORE COMMANDS ───
 
 @bot.command()
 async def afk(ctx, *, reason="Away"):
     bot.afk_reason = reason
-    bot.afk_pings = 0
     await ctx.send(ui("33", "AFK", f"Status: [1;33mENABLED[0m\nReason: {reason}"), delete_after=5)
-
-@bot.command()
-async def dot(ctx, mode):
-    modes = {"online": discord.Status.online, "idle": discord.Status.idle, "dnd": discord.Status.dnd, "invisible": discord.Status.invisible}
-    status = modes.get(mode.lower(), discord.Status.online)
-    await bot.change_presence(status=status)
-    await ctx.send(ui("32", "DOT", f"Mode: [1;32m{mode.upper()}[0m"), delete_after=3)
-
-@bot.command()
-async def addstatus(ctx, *, t):
-    bot.status_messages.append(t)
-    await ctx.send(ui("35", "STATUS", f"Added to list."), delete_after=3)
-
-# ─── UTILS ───
 
 @bot.command()
 async def purge(ctx, n: int):
