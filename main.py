@@ -53,7 +53,10 @@ class Kill(commands.Bot):
 
     async def on_message(self, message):
         if message.author.id == self.user.id:
+            # IMPORTANT: This allows commands to run
             await self.process_commands(message)
+            
+            # AFK Removal logic
             if self.afk_reason and not message.content.startswith(self.command_prefix):
                 if (time.time() - self.afk_time) > 3:
                     log_text = "\n".join(self.afk_log) if self.afk_log else "No pings."
@@ -61,14 +64,13 @@ class Kill(commands.Bot):
                     self.afk_reason, self.afk_pings, self.afk_log = None, 0, []
             return
 
+        # Social/AFK Handlers for other users
         if self.mock_target and message.author.id == self.mock_target:
-            content = "".join([c.upper() if i % 2 == 0 else c.lower() for i, c in enumerate(message.content)])
-            try: await message.channel.send(content)
+            try: await message.channel.send("".join([c.upper() if i % 2 == 0 else c.lower() for i, c in enumerate(message.content)]))
             except: pass
 
         if self.uwu_target and message.author.id == self.uwu_target:
-            content = message.content.replace('L','W').replace('R','W').replace('l','w').replace('r','w') + " uwu"
-            try: await message.channel.send(content)
+            try: await message.channel.send(message.content.replace('L','W').replace('R','W').replace('l','w').replace('r','w') + " uwu")
             except: pass
 
         if self.afk_reason and self.user.mentioned_in(message):
@@ -82,22 +84,27 @@ async def ui_send(ctx, title, body, footer="Selfbot", color="34"):
     ui = f"```ansi\n[1;{color}m┏━━━━ [ {title} ] ━━━━┓[0m\n{body}\n[1;30m┗━━ {footer} ━━┛[0m\n```"
     await ctx.send(ui, delete_after=7)
 
-# ─── INITIALIZE BOT ───
 bot = Kill()
 
-# ─── COMMANDS ───
+# ─── HELP & PAGES ───
 @bot.command()
-async def help(ctx):
-    body = "[1;34m,utility[0m | [1;35m,status[0m | [1;31m,social[0m"
-    await ui_send(ctx, "HELP", body, "v1.1-Turbo", "37")
+async def help(ctx, category=None):
+    if not category:
+        body = "[1;34m,help utility[0m\n[1;35m,help status[0m\n[1;31m,help social[0m"
+        await ui_send(ctx, "HELP MENU", body, "v1.2", "37")
+    elif category.lower() == "utility":
+        body = "[1;37m,purge [n][0m | [1;37m,spam [n] [t][0m\n[1;37m,afk [r][0m | [1;37m,ping[0m | [1;37m,stop[0m"
+        await ui_send(ctx, "UTILITY", body, "Page 1", "34")
+    elif category.lower() == "status":
+        body = "[1;37m,addbio [t][0m | [1;37m,rotatebio [on/off][0m\n[1;37m,rpc [t][0m | [1;37m,dot [mode][0m"
+        await ui_send(ctx, "STATUS", body, "Page 2", "35")
+    elif category.lower() == "social":
+        body = "[1;37m,mock [@u][0m | [1;37m,uwu [@u][0m\n[1;37m,unmock[0m"
+        await ui_send(ctx, "SOCIAL", body, "Page 3", "31")
 
-@bot.command()
-async def ping(ctx):
-    await ui_send(ctx, "PONG", f"{round(bot.latency * 1000)}ms", "Active", "32")
-
+# ─── UTILITY ───
 @bot.command()
 async def purge(ctx, n: int):
-    """Turbo Purge: 0.15s delay"""
     await ctx.message.delete()
     count = 0
     async for msg in ctx.channel.history(limit=n):
@@ -111,7 +118,6 @@ async def purge(ctx, n: int):
 
 @bot.command()
 async def spam(ctx, amount: int, *, text: str):
-    """Turbo Spam: 0.25s delay"""
     bot.spamming = True
     await ctx.message.delete()
     for _ in range(amount):
@@ -122,6 +128,11 @@ async def spam(ctx, amount: int, *, text: str):
         except: break
     bot.spamming = False
 
+@bot.command()
+async def ping(ctx):
+    await ui_send(ctx, "PONG", f"{round(bot.latency * 1000)}ms", "Active", "32")
+
+# ─── SOCIAL ───
 @bot.command()
 async def mock(ctx, target: discord.User):
     bot.mock_target = target.id
@@ -134,6 +145,12 @@ async def uwu(ctx, target: discord.User):
     bot.mock_target = None
     await ui_send(ctx, "UWU", f"Target: {target.name}", "CUTE", "35")
 
+@bot.command()
+async def unmock(ctx):
+    bot.mock_target = bot.uwu_target = None
+    await ui_send(ctx, "SOCIAL", "Targets cleared.", "CLEARED", "32")
+
+# ─── STATUS & AFK ───
 @bot.command()
 async def afk(ctx, *, reason="Away"):
     bot.afk_reason, bot.afk_time = reason, time.time()
@@ -153,6 +170,18 @@ async def rotatebio(ctx, toggle: str):
     else:
         bot.rotating_bio = False
         await ui_send(ctx, "BIO", "Rotation: OFF", "31")
+
+@bot.command()
+async def dot(ctx, mode: str):
+    modes = {"online": discord.Status.online, "idle": discord.Status.idle, "dnd": discord.Status.dnd, "inv": discord.Status.invisible}
+    status = modes.get(mode.lower(), discord.Status.online)
+    await bot.change_presence(status=status)
+    await ui_send(ctx, "DOT", f"Status: {mode.upper()}", "UPDATED", "34")
+
+@bot.command()
+async def rpc(ctx, *, text: str):
+    await bot.change_presence(activity=discord.Streaming(name=text, url="https://twitch.tv/discord"))
+    await ui_send(ctx, "RPC", f"Streaming: {text}", "RPC SET", "35")
 
 @bot.command()
 async def stop(ctx):
