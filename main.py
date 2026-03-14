@@ -28,10 +28,26 @@ class Kill(commands.Bot):
         self.target_id = None
         self.react_emoji = None
         self.afk_reason = None
-        self.afk_time = 0 
+        self.afk_time = 0
+        # --- Status Text Rotator ---
+        self.rotating_status = False
+        self.status_messages = ["Hello", "Welcome", "To my profile"]
+        self.status_dot = discord.Status.online
 
     async def on_ready(self):
         print(f"─── SESSION ACTIVE: {self.display_name} ({self.user}) ───")
+
+    async def status_rotator(self):
+        """Rotates the actual Custom Status text next to your name."""
+        while self.rotating_status:
+            for text in self.status_messages:
+                if not self.rotating_status: break
+                # This changes the actual Custom Status text
+                await self.change_presence(
+                    activity=discord.CustomActivity(name=text),
+                    status=self.status_dot
+                )
+                await asyncio.sleep(5) # Changes every 5 seconds
 
     async def on_message(self, message):
         if self.afk_reason and self.user.mentioned_in(message) and message.author.id != self.user.id:
@@ -45,14 +61,12 @@ class Kill(commands.Bot):
             except: pass
         
         if message.author.id == self.user.id:
-            if message.content.startswith("**[AFK]**"):
-                return
+            if message.content.startswith("**[AFK]**"): return
             if message.content.startswith(self.command_prefix):
                 await self.process_commands(message)
                 return
             if self.afk_reason:
-                if (time.time() - self.afk_time) < 2:
-                    return
+                if (time.time() - self.afk_time) < 2: return
                 self.afk_reason = None
                 await ui_send(message.channel, "SYSTEM", "Welcome back! AFK removed.", "32")
 
@@ -69,40 +83,45 @@ async def ui_send(ctx, title, body, color="34"):
 def add_commands(bot: Kill):
     @bot.command()
     async def help(ctx):
-        body = (",spam [n] [msg] | ,purge [n]\n"
-                ",react [@user] [emoji] | ,sr\n"
-                ",afk [reason] | ,rpc [type] [text]\n"
-                ",stop (all)")
+        body = (",dot [online/idle/dnd/inv]\n"
+                ",addmsg [text] | ,clearmsgs\n"
+                ",rotate [on/off]\n"
+                ",afk [reason] | ,stop")
         await ui_send(ctx, "COMMANDS", body, "35")
 
     @bot.command()
-    async def rpc(ctx, activity_type: str, *, text: str = None):
-        activity_type = activity_type.lower()
-        
-        if activity_type == "clear":
-            await bot.change_presence(activity=None)
-            await ui_send(ctx, "RPC", "Presence cleared.", "31")
-            return
+    async def addmsg(ctx, *, text: str):
+        """Add a message to the Status Text rotation."""
+        bot.status_messages.append(text)
+        await ui_send(ctx, "STATUS", f"Added: {text}", "32")
 
-        if not text:
-            await ui_send(ctx, "ERROR", "Usage: ,rpc [playing/streaming/watching] [text]", "31")
-            return
+    @bot.command()
+    async def clearmsgs(ctx):
+        """Wipe the Status Text list."""
+        bot.status_messages = []
+        bot.rotating_status = False
+        await ui_send(ctx, "STATUS", "List cleared.", "31")
 
-        if activity_type == "playing":
-            act = discord.Game(name=text)
-        elif activity_type == "streaming":
-            # Note: Streaming requires a valid Twitch/YouTube URL to show the purple icon
-            act = discord.Streaming(name=text, url="https://www.twitch.tv/discord")
-        elif activity_type == "watching":
-            act = discord.Activity(type=discord.ActivityType.watching, name=text)
-        elif activity_type == "listening":
-            act = discord.Activity(type=discord.ActivityType.listening, name=text)
+    @bot.command()
+    async def rotate(ctx, toggle: str):
+        """Toggle the Custom Status text rotation."""
+        if toggle.lower() == "on":
+            if not bot.status_messages:
+                return await ui_send(ctx, "ERROR", "No messages in list!", "31")
+            bot.rotating_status = True
+            bot.loop.create_task(bot.status_rotator())
+            await ui_send(ctx, "ROTATOR", "Status rotation: ENABLED", "32")
         else:
-            await ui_send(ctx, "ERROR", "Types: playing, streaming, watching, listening, clear", "31")
-            return
+            bot.rotating_status = False
+            await ui_send(ctx, "ROTATOR", "Status rotation: DISABLED", "31")
 
-        await bot.change_presence(activity=act)
-        await ui_send(ctx, "RPC", f"Status set to: {activity_type.title()} {text}", "32")
+    @bot.command()
+    async def dot(ctx, mode: str):
+        """Change your online dot color."""
+        modes = {"online": discord.Status.online, "idle": discord.Status.idle, "dnd": discord.Status.dnd, "inv": discord.Status.invisible}
+        bot.status_dot = modes.get(mode.lower(), discord.Status.online)
+        await bot.change_presence(status=bot.status_dot)
+        await ui_send(ctx, "DOT", f"Set to {mode.upper()}", "34")
 
     @bot.command()
     async def afk(ctx, *, reason="I'm away right now."):
@@ -111,42 +130,12 @@ def add_commands(bot: Kill):
         await ui_send(ctx, "AFK", f"Status set: {reason}", "33")
 
     @bot.command()
-    async def react(ctx, target: str, emoji: str):
-        user_id_match = re.search(r'\d+', target)
-        if user_id_match:
-            bot.target_id = int(user_id_match.group())
-            bot.react_emoji = emoji
-            await ui_send(ctx, "AUTO-REACT", f"Targeting: {bot.target_id}", "32")
-
-    @bot.command()
-    async def sr(ctx):
-        bot.target_id = None
-        bot.react_emoji = None
-        await ui_send(ctx, "AUTO-REACT", "Stopped reactions.", "31")
-
-    @bot.command()
-    async def spam(ctx, amount: int, *, text):
-        bot.spamming = True
-        for _ in range(amount):
-            if not bot.spamming: break
-            try:
-                await ctx.send(text)
-                await asyncio.sleep(0.4)
-            except: break
-        bot.spamming = False
-
-    @bot.command()
-    async def purge(ctx, amount: int):
-        def is_me(m): return m.author.id == bot.user.id
-        await ctx.channel.purge(limit=amount, check=is_me)
-        await ui_send(ctx, "PURGE", f"Cleared {amount}", "34")
-
-    @bot.command()
     async def stop(ctx):
         bot.spamming = False
         bot.target_id = None
         bot.react_emoji = None
         bot.afk_reason = None
+        bot.rotating_status = False
         await ui_send(ctx, "SYSTEM", "Killed all tasks.", "31")
 
 # ─── Execution ───
