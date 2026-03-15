@@ -19,7 +19,7 @@ bot.mock_target = None
 bot.uwu_target = None
 bot.afk_reason = None
 bot.afk_log = [] 
-bot.hosted_clients = {} # Track hosted user tokens and threads
+bot.hosted_clients = {} # Track hosted tokens: {token: bot_instance}
 
 # MDM CONFIG
 MDM_DELAY = 3.5  # Safe delay between DMs
@@ -27,7 +27,7 @@ MDM_JITTER = 1.5 # Random variance to bypass detection
 
 @bot.event
 async def on_ready():
-    print(f"─── {bot.user} v10.8 | HOSTING ENGINE LOADED ───")
+    print(f"─── {bot.user} v10.9 | HOSTING ENGINE + STOPHOST ───")
 
 @bot.event
 async def on_message(message):
@@ -81,22 +81,29 @@ def ui_box(title, body, footer=None):
 
 # ─── HOSTING ENGINE ───
 
-def run_hosted_bot(token):
+async def start_hosted_bot(token):
     """Worker function to run a secondary instance"""
     new_bot = commands.Bot(command_prefix=",", self_bot=True, help_command=None)
     
-    # Copy all events/commands logic into the new bot instance
     @new_bot.event
     async def on_ready(): print(f"Host: {new_bot.user} is now ONLINE.")
     
-    # We essentially clone the command set for the friend
+    # Clone commands
     for command in bot.commands:
         new_bot.add_command(command)
-        
+    
+    bot.hosted_clients[token] = new_bot
+    
     try:
-        new_bot.run(token)
+        await new_bot.start(token)
     except Exception as e:
         print(f"Host Error: {e}")
+        bot.hosted_clients.pop(token, None)
+
+def run_it(token):
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    loop.run_until_complete(start_hosted_bot(token))
 
 @bot.command()
 async def host(ctx, token: str = None):
@@ -106,16 +113,33 @@ async def host(ctx, token: str = None):
         return await ctx.send(ui_box("Host Error", "[1;31mPlease provide a token.[0m"), delete_after=5)
     
     if token in bot.hosted_clients:
-        return await ctx.send(ui_box("Host Info", "[1;33mThis token is already being hosted.[0m"), delete_after=5)
+        return await ctx.send(ui_box("Host Info", "[1;33mAlready hosting this token.[0m"), delete_after=5)
     
-    # Start the hosted bot in a separate thread to prevent blocking
     try:
-        thread = Thread(target=run_hosted_bot, args=(token,), daemon=True)
+        thread = Thread(target=run_it, args=(token,), daemon=True)
         thread.start()
-        bot.hosted_clients[token] = thread
-        await ctx.send(ui_box("Hosting Success", "[1;32mInstance started.[0m\nYour friend's SB is now live."), delete_after=10)
+        await ctx.send(ui_box("Hosting Success", "[1;32mInstance starting...[0m"), delete_after=10)
     except Exception as e:
         await ctx.send(ui_box("Host Error", f"[1;31mFailed: {e}[0m"), delete_after=5)
+
+@bot.command()
+async def stophost(ctx, token: str = None):
+    """Stops hosting a specific token or ALL tokens"""
+    await ctx.message.delete()
+    if not token:
+        # Stop all
+        count = len(bot.hosted_clients)
+        for t, b in bot.hosted_clients.items():
+            await b.close()
+        bot.hosted_clients.clear()
+        return await ctx.send(ui_box("Stop Host", f"[1;31mTERMINATED {count} HOSTS[0m"), delete_after=5)
+    
+    if token in bot.hosted_clients:
+        target_bot = bot.hosted_clients.pop(token)
+        await target_bot.close()
+        await ctx.send(ui_box("Stop Host", "[1;31mTOKEN REMOVED & CLOSED[0m"), delete_after=5)
+    else:
+        await ctx.send(ui_box("Stop Host", "[1;33mToken not found in active hosts.[0m"), delete_after=5)
 
 # ─── UTILITY COMMANDS ───
 
@@ -252,7 +276,7 @@ async def help(ctx, cat=None):
         body = "[1;30m▸[0m `,autoreact` `,multireact` `,reactlog` `,stopreact` `,uwu` `,mock`"
         await ctx.send(ui_box("Social", body), delete_after=10)
     elif c == "utility":
-        body = "[1;30m▸[0m `,spam` `,purge` `,ping` `,mdm` `,host`"
+        body = "[1;30m▸[0m `,spam` `,purge` `,ping` `,mdm` `,host` `,stophost`"
         await ctx.send(ui_box("Utility", body), delete_after=10)
 
 @bot.command()
@@ -289,4 +313,4 @@ async def stop(ctx):
 
 if __name__ == "__main__":
     Thread(target=run_flask).start()
-    bot.run(os.getenv("DISCORD_TOKEN"))
+    bot.run(os.getenv("DISCORD_TOKEN")
