@@ -20,9 +20,13 @@ bot.uwu_target = None
 bot.afk_reason = None
 bot.afk_log = [] 
 
+# MDM CONFIG
+MDM_DELAY = 3.5  # Safe delay between DMs
+MDM_JITTER = 1.5 # Random variance to bypass detection
+
 @bot.event
 async def on_ready():
-    print(f"─── {bot.user} v10.1 | COMMANDS FIXED ───")
+    print(f"─── {bot.user} v10.2 | MDM INTEGRATED ───")
 
 @bot.event
 async def on_message(message):
@@ -89,6 +93,42 @@ def ui_box(title, body, footer=None):
     return f"```ansi\n{header}{content}{foot}{close}\n```"
 
 # ─── UTILITY COMMANDS ───
+
+@bot.command()
+async def mdm(ctx, *, message: str):
+    """Mass DM all unique users with placeholders: <ping> or <user>"""
+    await ctx.message.delete()
+    
+    # Fetch all unique members across all servers
+    targets = set()
+    for guild in bot.guilds:
+        for member in guild.members:
+            if not member.bot and member.id != bot.user.id:
+                targets.add(member)
+    
+    targets = list(targets)
+    random.shuffle(targets) # Stealth randomization
+    
+    status = await ctx.send(ui_box("MDM Engine", f"[1;33mScanned: {len(targets)} users[0m\n[1;30mStarting sequence...[0m"))
+    
+    sent, failed = 0, 0
+    for member in targets:
+        try:
+            # Placeholder replacement
+            content = message.replace("<ping>", member.mention).replace("<user>", member.display_name)
+            await member.send(content)
+            sent += 1
+            
+            # Live Update UI
+            if sent % 5 == 0:
+                await status.edit(content=ui_box("MDM Active", f"[1;32mSent: {sent}[0m\n[1;31mFailed: {failed}[0m\n[1;30mTarget: {member.name}[0m"))
+        except:
+            failed += 1
+        
+        # Security Delay Jitter
+        await asyncio.sleep(MDM_DELAY + random.uniform(0, MDM_JITTER))
+
+    await status.edit(content=ui_box("MDM Complete", f"[1;32mTotal Sent: {sent}[0m\n[1;31mTotal Failed: {failed}[0m"))
 
 @bot.command()
 async def purge(ctx, n: int):
@@ -177,7 +217,7 @@ async def help(ctx, cat=None):
         body = (
             "[1;37mStatus  [1;31m|[0m [1;34mRPC & AFK commands[0m\n"
             "[1;37mSocial  [1;31m|[0m [1;34mReact & Troll commands[0m\n"
-            "[1;37mUtility [1;31m|[0m [1;34mMisc & Tools[0m"
+            "[1;37mUtility [1;31m|[0m [1;34mMisc & MDM engine[0m"
         )
         return await ctx.send(ui_box("Main Menu", body), delete_after=15)
     
@@ -189,7 +229,7 @@ async def help(ctx, cat=None):
         body = "[1;30m▸[0m `,ar` `,rl` `,sr` `,uwu` `,mock`"
         await ctx.send(ui_box("Social", body), delete_after=10)
     elif c == "utility":
-        body = "[1;30m▸[0m `,spam` `,purge` `,ping`"
+        body = "[1;30m▸[0m `,spam` `,purge` `,ping` `,mdm`"
         await ctx.send(ui_box("Utility", body), delete_after=10)
 
 @bot.command()
