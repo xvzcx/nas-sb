@@ -155,12 +155,15 @@ async def purge(ctx, n: int):
 
 @bot.command()
 async def spam(ctx, n: int, *, text):
+    """Spam command - handles pings and plain text"""
+    await ctx.message.delete()
     bot.spamming = True
     for _ in range(n):
         if not bot.spamming: break
         try:
+            # text is passed as a string including mentions
             await ctx.send(text)
-            await asyncio.sleep(0.2)
+            await asyncio.sleep(0.25)
         except:
             await asyncio.sleep(1)
 
