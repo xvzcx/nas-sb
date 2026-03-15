@@ -26,7 +26,7 @@ MDM_JITTER = 1.5 # Random variance to bypass detection
 
 @bot.event
 async def on_ready():
-    print(f"─── {bot.user} v10.4 | STABILIZED ───")
+    print(f"─── {bot.user} v10.5 | REACTION LOGIC RESTORED ───")
 
 @bot.event
 async def on_message(message):
@@ -55,13 +55,14 @@ async def on_message(message):
         bot.afk_log.append(log_entry)
         await message.channel.send(f"**[AFK]** {bot.afk_reason}", delete_after=5)
 
-    # Sticky Auto-React
+    # Sticky Auto-React (Restored Logic)
     if uid in bot.targets:
-        for e in bot.targets[uid]:
+        for emoji in bot.targets[uid]:
             try:
-                await message.add_reaction(e.strip())
+                await message.add_reaction(emoji.strip())
                 await asyncio.sleep(0.1)
-            except: continue
+            except:
+                continue
 
     # Mock Logic
     if bot.mock_target == uid:
@@ -174,30 +175,33 @@ async def ping(ctx):
 # ─── SOCIAL COMMANDS ───
 
 @bot.command()
-async def autoreact(ctx, *, args):
-    try:
-        user = ctx.message.mentions[0]
-        emojis = args.replace(f"<@{user.id}>", "").replace(f"<@!{user.id}>", "").strip().split()
-        bot.targets[user.id] = emojis
-        await ctx.send(ui_box("Autoreact Add", f"[1;34mTarget:[0m {user.name}\n[1;34mReacts:[0m {' '.join(emojis)}"), delete_after=5)
-    except: pass
+async def autoreact(ctx, user: discord.Member, *, emojis):
+    """Restored logic for adding emojis to a target"""
+    await ctx.message.delete()
+    bot.targets[user.id] = emojis.split()
+    await ctx.send(ui_box("Autoreact Add", f"[1;34mTarget:[0m {user.name}\n[1;34mReacts:[0m {emojis}"), delete_after=5)
 
 @bot.command()
-async def multireact(ctx, *, args):
+async def multireact(ctx, *, emojis):
+    """Restored logic for multireact (replies or mentions)"""
+    await ctx.message.delete()
     try:
         if ctx.message.reference:
             ref = await ctx.channel.fetch_message(ctx.message.reference.message_id)
             user = ref.author
-            emojis = args.split()
+            target_emojis = emojis.split()
         else:
             user = ctx.message.mentions[0]
-            emojis = args.replace(f"<@{user.id}>", "").replace(f"<@!{user.id}>", "").strip().split()
-        bot.targets[user.id] = emojis
-        await ctx.send(ui_box("Multireact", f"[1;32mFollowing:[0m {user.name}\n[1;32mEmojis:[0m {' '.join(emojis)}"), delete_after=5)
-    except: pass
+            target_emojis = emojis.replace(f"<@{user.id}>", "").replace(f"<@!{user.id}>", "").strip().split()
+        
+        bot.targets[user.id] = target_emojis
+        await ctx.send(ui_box("Multireact", f"[1;32mFollowing:[0m {user.name}\n[1;32mEmojis:[0m {' '.join(target_emojis)}"), delete_after=5)
+    except Exception as e:
+        print(f"Error in multireact: {e}")
 
 @bot.command()
 async def reactlog(ctx):
+    await ctx.message.delete()
     if not bot.targets: return await ctx.send("`[!]` No active tracks.", delete_after=5)
     body = ""
     for tid, emojis in bot.targets.items():
@@ -207,21 +211,19 @@ async def reactlog(ctx):
     await ctx.send(ui_box("React Log", body), delete_after=15)
 
 @bot.command()
-async def stopreact(ctx, *, args=None):
-    if args and args.lower() == "all":
+async def stopreact(ctx, user: discord.Member = None):
+    await ctx.message.delete()
+    if user is None:
         bot.targets = {}
-        return await ctx.send(ui_box("Stopreact Clear", "[1;31mALL TARGETS REMOVED[0m"), delete_after=3)
+        return await ctx.send(ui_box("Stopreact", "[1;31mALL TARGETS CLEARED[0m"), delete_after=3)
     
-    tid = None
-    if ctx.message.mentions:
-        tid = ctx.message.mentions[0].id
-    
-    if tid and tid in bot.targets:
-        bot.targets.pop(tid)
-        await ctx.send(ui_box("Stopreact", f"[1;31mRemoved ID:[0m {tid}"), delete_after=3)
+    if user.id in bot.targets:
+        bot.targets.pop(user.id)
+        await ctx.send(ui_box("Stopreact", f"[1;31mStopped:[0m {user.name}"), delete_after=3)
 
 @bot.command()
 async def mock(ctx, user: discord.Member = None):
+    await ctx.message.delete()
     if not user:
         bot.mock_target = None
         return await ctx.send(ui_box("Mock", "[1;31mMOCK DISABLED[0m"), delete_after=3)
@@ -230,6 +232,7 @@ async def mock(ctx, user: discord.Member = None):
 
 @bot.command()
 async def uwu(ctx, user: discord.Member = None):
+    await ctx.message.delete()
     if not user:
         bot.uwu_target = None
         return await ctx.send(ui_box("Uwu", "[1;31mUWU DISABLED[0m"), delete_after=3)
@@ -240,6 +243,7 @@ async def uwu(ctx, user: discord.Member = None):
 
 @bot.command()
 async def help(ctx, cat=None):
+    await ctx.message.delete()
     if not cat:
         body = (
             "[1;37mStatus  [1;31m|[0m [1;34mRPC & AFK commands[0m\n"
@@ -261,11 +265,13 @@ async def help(ctx, cat=None):
 
 @bot.command()
 async def afk(ctx, *, reason="Away"):
+    await ctx.message.delete()
     bot.afk_reason = reason
     await ctx.send(ui_box("AFK", f"[1;33mREASON:[0m {reason}"), delete_after=5)
 
 @bot.command()
 async def rpc(ctx, mode, *, text):
+    await ctx.message.delete()
     m = mode.lower()
     if m == "play": act = discord.Game(name=text)
     elif m == "listen": act = discord.Activity(type=discord.ActivityType.listening, name=text)
@@ -276,6 +282,7 @@ async def rpc(ctx, mode, *, text):
 
 @bot.command()
 async def stop(ctx):
+    await ctx.message.delete()
     bot.spamming = False
     bot.targets = {}; bot.mock_target = bot.uwu_target = bot.afk_reason = None
     await ctx.send(ui_box("Halt", "[1;31mALL SYSTEMS STOPPED[0m"), delete_after=3)
