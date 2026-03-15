@@ -1,4 +1,4 @@
-import discord, asyncio, os, re, time, requests
+import discord, asyncio, os, re, time, requests, random
 from discord.ext import commands
 from flask import Flask
 from threading import Thread
@@ -18,140 +18,170 @@ bot.mock_target = None
 bot.uwu_target = None
 bot.afk_reason = None
 bot.afk_log = [] 
-bot.status_messages = []
-bot.rotating_status = False
+
+# MDM SETTINGS (Integrated Security)
+MDM_BLACKLIST = set()
+BASE_DELAY = 3.0
+JITTER_MIN = 0.5
+JITTER_MAX = 2.0
+DEFAULT_TEMPLATE = "<ping> yo check your DMs!"
 
 @bot.event
 async def on_ready():
-    print(f"─── {bot.user} v7.5 STABLE ───")
+    print(f"─── {bot.user} v9.5 | UI & MDM READY ───")
 
 @bot.event
 async def on_message(message):
-    # 1. ALWAYS process commands first
     await bot.process_commands(message)
-
-    # 2. HARD FILTER FOR SELF-MESSAGES (AFK OFF LOGIC)
+    
     if message.author.id == bot.user.id:
         if bot.afk_reason:
-            if not message.content.startswith(bot.command_prefix) and "┏━" not in message.content and "**[AFK]**" not in message.content:
+            if not message.content.startswith(bot.command_prefix) and "╭──" not in message.content and "**[AFK]**" not in message.content:
                 bot.afk_reason = None
                 await message.channel.send("`[AFK]` Disabled. Welcome back.", delete_after=3)
         return 
 
-    # 3. LOGIC FOR OTHERS
     uid = message.author.id
-
-    # AFK PING RESPONDER & LOGGER
+    
+    # AFK Logic
     if bot.afk_reason and bot.user.mentioned_in(message) and not message.mention_everyone:
         timestamp = time.strftime("%H:%M:%S", time.localtime())
-        log_entry = f"[1;30m[{timestamp}][0m [1;34m{message.author.name}[0m [1;30min[0m #{message.channel}"
+        log_entry = f"[1;30m[{timestamp}][0m [1;34m{message.author.name}[0m in #{message.channel}"
         bot.afk_log.append(log_entry)
         await message.channel.send(f"**[AFK]** {bot.afk_reason}", delete_after=5)
 
-    # STICKY AR ENGINE
+    # Sticky Auto-React
     if uid in bot.targets:
-        emojis = bot.targets[uid]
-        for e in emojis:
+        for e in bot.targets[uid]:
             try:
                 await message.add_reaction(e.strip())
                 await asyncio.sleep(0.1)
-            except:
-                continue
+            except: continue
 
-    # TROLLING LOGIC
+    # Mock Logic (Exact mimic)
     if bot.mock_target == uid:
-        # Fixed: Now mocks exactly what they say
         await message.channel.send(message.content)
     
+    # Uwu Logic
     if bot.uwu_target == uid:
         uwu_map = str.maketrans({'r': 'w', 'l': 'w', 'R': 'W', 'L': 'W'})
         await message.channel.send(f"{message.content.translate(uwu_map)} uwu")
 
-# ─── UI ENGINE ───
-def ui(color, title, text):
-    line = "━━━━━━━━━━━━━━━━━━━━"
-    return (
-        f"```ansi\n"
-        f"[1;{color}m┏━ {title.center(16)} ━┓[0m\n"
-        f"{text}\n"
-        f"[1;30m┗━{line[:len(title)+4]}━┛[0m\n"
-        f"```"
+# ─── UI ENGINE (BOXED STYLE) ───
+def ui_box(title, body, footer="Made by purge"):
+    width = 34
+    header = (
+        f"[1;30m╭{'─'*(width-2)}╮[0m\n"
+        f"[1;31m Category:[0m [1;37m{title}[0m\n"
+        f"[1;31m Commands:[0m [1;30m{bot.command_prefix}help <cat>[0m\n"
+        f"[1;30m├{'─'*(width-2)}┤[0m\n"
     )
+    content = ""
+    for line in body.split("\n"):
+        content += f" {line}\n"
+    
+    foot = (f"[1;30m├{'─'*(width-2)}┤[0m\n" f" [1;31m {footer}[0m\n")
+    close = f"[1;30m╰{'─'*(width-2)}╯[0m"
+    return f"```ansi\n{header}{content}{foot}{close}\n```"
 
-# ─── PRESENCE COMMANDS ───
-
-@bot.command()
-async def rpc(ctx, mode, *, text):
-    m = mode.lower()
-    if m == "play": act = discord.Game(name=text)
-    elif m == "listen": act = discord.Activity(type=discord.ActivityType.listening, name=text)
-    elif m == "watch": act = discord.Activity(type=discord.ActivityType.watching, name=text)
-    else: return await ctx.send(ui("31", "ERROR", "Modes: play, listen, watch"), delete_after=3)
-    await bot.change_presence(activity=act)
-    await ctx.send(ui("36", "PRESENCE", f"{m.title()}ing: [1;36m{text}[0m"), delete_after=3)
+# ─── MDM COMMAND ───
 
 @bot.command()
-async def streaming(ctx, *, text):
-    await bot.change_presence(activity=discord.Streaming(name=text, url="https://twitch.tv/discord"))
-    await ctx.send(ui("35", "STREAM", f"Streaming: [1;35m{text}[0m"), delete_after=3)
+async def mdm(ctx, *, content: str = None):
+    """Mass DM with random delay and placeholder support (<ping> or <user>)"""
+    template = content if content else DEFAULT_TEMPLATE
+    
+    if "<ping>" not in template and "<user>" not in template:
+        return await ctx.send(ui_box("MDM Error", "[1;31mMissing Tags![0m\nUse [1;37m<ping>[0m or [1;37m<user>[0m"), delete_after=10)
 
-@bot.command()
-async def dot(ctx, mode):
-    modes = {"online": discord.Status.online, "idle": discord.Status.idle, "dnd": discord.Status.dnd, "invisible": discord.Status.invisible}
-    status = modes.get(mode.lower(), discord.Status.online)
-    await bot.change_presence(status=status)
-    await ctx.send(ui("32", "DOT", f"Mode: [1;32m{mode.upper()}[0m"), delete_after=3)
+    status_msg = await ctx.send(ui_box("MDM Scan", "[1;33mSearching servers...[0m"))
+    await ctx.message.delete()
+
+    targets = set()
+    for guild in bot.guilds:
+        for member in guild.members:
+            if member.bot or member == bot.user or member.id in MDM_BLACKLIST:
+                continue
+            targets.add(member)
+
+    if not targets:
+        return await status_msg.edit(content=ui_box("MDM Error", "[1;31mNo users found.[0m"))
+
+    targets = list(targets)
+    random.shuffle(targets) # Stealth: Randomize order
+    sent, failed = 0, 0
+
+    for member in targets:
+        try:
+            # Display Name Logic
+            name = member.display_name or member.global_name or member.name
+            msg = template.replace("<ping>", member.mention).replace("<user>", name)
+            
+            await member.send(msg)
+            sent += 1
+            
+            # Progress Updates
+            if sent % 3 == 0:
+                await status_msg.edit(content=ui_box("MDM Running", f"[1;32mSent: {sent}[0m\n[1;31mFailed: {failed}[0m\n[1;30mLast: {name}[0m"))
+                
+        except discord.HTTPException as e:
+            failed += 1
+            if e.code == 429: # Handle Discord Rate Limits
+                await status_msg.edit(content=ui_box("MDM Pause", "[1;33mRate Limit - Sleeping 60s[0m"))
+                await asyncio.sleep(60)
+        except:
+            failed += 1
+
+        # Security Jitter
+        await asyncio.sleep(BASE_DELAY + random.uniform(JITTER_MIN, JITTER_MAX))
+
+    await status_msg.edit(content=ui_box("MDM Finish", f"[1;32mSent: {sent}[0m\n[1;31mFailed: {failed}[0m"))
 
 # ─── UTILITY COMMANDS ───
 
 @bot.command()
 async def purge(ctx, n: int):
+    """Fast message deletion"""
     await ctx.message.delete()
-    count = 0
-    async for m in ctx.channel.history(limit=min(n * 5, 500)):
+    deleted = 0
+    async for m in ctx.channel.history(limit=200):
         if m.author.id == bot.user.id:
             try:
                 await m.delete()
-                count += 1
-                if count >= n: break
-                await asyncio.sleep(0.01)
+                deleted += 1
+                if deleted >= n: break
+                await asyncio.sleep(0.005)
             except: continue
 
 @bot.command()
 async def spam(ctx, n: int, *, text):
+    """Optimized spamming engine"""
     bot.spamming = True
     for _ in range(n):
         if not bot.spamming: break
         try:
             await ctx.send(text)
             await asyncio.sleep(0.2)
-        except discord.errors.Forbidden: break
-        except: await asyncio.sleep(1)
+        except:
+            await asyncio.sleep(1)
 
 @bot.command()
 async def ping(ctx):
-    start = time.perf_counter()
-    message = await ctx.send("`Pinging...`")
-    end = time.perf_counter()
-    duration = (end - start) * 1000
-    await message.edit(content=f"**Latency:** `{int(bot.latency * 1000)}ms` | **API:** `{int(duration)}ms`")
+    await ctx.send(ui_box("System", f"[1;32mLATENCY:[0m {int(bot.latency * 1000)}ms"), delete_after=5)
 
-# ─── SOCIAL & REACT COMMANDS ───
+# ─── SOCIAL COMMANDS ───
 
 @bot.command(aliases=['ar'])
 async def autoreact(ctx, *, args):
-    """Usage: ,ar @user emojis"""
     try:
         user = ctx.message.mentions[0]
         emojis = args.replace(f"<@{user.id}>", "").replace(f"<@!{user.id}>", "").strip().split()
         bot.targets[user.id] = emojis
-        await ctx.send(ui("32", "AR ADDED", f"User: [1;32m{user.name}[0m\nReacts: {' '.join(emojis)}"), delete_after=5)
-    except:
-        await ctx.send(ui("31", "ERROR", "Usage: `,ar @user [emojis]`"), delete_after=3)
+        await ctx.send(ui_box("AR Add", f"[1;34mTarget:[0m {user.name}\n[1;34mReacts:[0m {' '.join(emojis)}"), delete_after=5)
+    except: pass
 
 @bot.command(aliases=['mr'])
 async def multireact(ctx, *, args):
-    """Alias for sticky Auto-React (Following the user)"""
     try:
         if ctx.message.reference:
             ref = await ctx.channel.fetch_message(ctx.message.reference.message_id)
@@ -160,80 +190,46 @@ async def multireact(ctx, *, args):
         else:
             user = ctx.message.mentions[0]
             emojis = args.replace(f"<@{user.id}>", "").replace(f"<@!{user.id}>", "").strip().split()
-        
         bot.targets[user.id] = emojis
-        await ctx.send(ui("32", "MULTI-REACT", f"Now following: [1;32m{user.name}[0m\nReacts: {' '.join(emojis)}"), delete_after=5)
-    except:
-        await ctx.send(ui("31", "ERROR", "Reply to user or mention them with emojis."), delete_after=3)
+        await ctx.send(ui_box("Multi", f"[1;32mFollowing:[0m {user.name}\n[1;32mEmojis:[0m {' '.join(emojis)}"), delete_after=5)
+    except: pass
 
-@bot.command()
-async def stopreact(ctx, *, args=None):
-    """Stops AR for a user. Usage: ,stopreact @user or ,stopreact [id] or ,stopreact all"""
-    if not args:
-        if ctx.message.reference:
-            ref = await ctx.channel.fetch_message(ctx.message.reference.message_id)
-            tid = ref.author.id
-            if tid in bot.targets:
-                bot.targets.pop(tid)
-                return await ctx.send(ui("31", "AR REMOVED", f"Stopped: [1;31m{ref.author.name}[0m"), delete_after=3)
-        return await ctx.send(ui("31", "ERROR", "Mention a user or type 'all'"), delete_after=3)
-
-    if args.lower() == "all":
-        bot.targets = {}
-        return await ctx.send(ui("31", "AR CLEARED", "All targets removed."), delete_after=3)
-
-    if ctx.message.mentions:
-        user = ctx.message.mentions[0]
-        if user.id in bot.targets:
-            bot.targets.pop(user.id)
-            await ctx.send(ui("31", "AR REMOVED", f"Stopped: [1;31m{user.name}[0m"), delete_after=3)
-    else:
-        try:
-            uid = int(args.strip())
-            if uid in bot.targets:
-                bot.targets.pop(uid)
-                await ctx.send(ui("31", "AR REMOVED", f"Stopped ID: {uid}"), delete_after=3)
-        except:
-            await ctx.send(ui("31", "ERROR", "Target not found."), delete_after=3)
-
-@bot.command()
+@bot.command(aliases=['rl'])
 async def reactlog(ctx):
-    """Shows active AR tracks"""
-    if not bot.targets:
-        return await ctx.send(ui("34", "REACT LOG", "No active tracks."), delete_after=5)
-    
-    lines = []
+    if not bot.targets: return await ctx.send("`[!]` No active tracks.", delete_after=5)
+    body = ""
     for tid, emojis in bot.targets.items():
         u = bot.get_user(tid)
-        name = f"[1;34m{u.name}[0m" if u else f"[1;30mID:{tid}[0m"
-        lines.append(f"[1;30m•[0m {name} [1;30m»[0m {' '.join(emojis)}")
-    
-    await ctx.send(ui("34", "ACTIVE TRACKS", "\n".join(lines)), delete_after=15)
+        name = u.name if u else tid
+        body += f"[1;34m{name}[0m [1;30m|[0m {' '.join(emojis)}\n"
+    await ctx.send(ui_box("React Log", body), delete_after=15)
 
-@bot.command()
-async def targets(ctx):
-    """Legacy alias for reactlog"""
-    await reactlog(ctx)
+@bot.command(aliases=['sr'])
+async def stopreact(ctx, *, args=None):
+    tid = None
+    if not args and ctx.message.reference:
+        ref = await ctx.channel.fetch_message(ctx.message.reference.message_id)
+        tid = ref.author.id
+    elif args and args.lower() == "all":
+        bot.targets = {}
+        return await ctx.send(ui_box("AR Clear", "[1;31mALL TARGETS REMOVED[0m"), delete_after=3)
+    elif ctx.message.mentions:
+        tid = ctx.message.mentions[0].id
+    
+    if tid and tid in bot.targets:
+        bot.targets.pop(tid)
+        await ctx.send(ui_box("AR Stop", f"[1;31mRemoved ID:[0m {tid}"), delete_after=3)
 
 @bot.command()
 async def mock(ctx, *, args=None):
-    """Sticky mock: mimics every message sent by the user exactly"""
     id_m = None
     if ctx.message.reference:
         ref = await ctx.channel.fetch_message(ctx.message.reference.message_id)
         id_m = ref.author.id
-    elif ctx.message.mentions:
-        id_m = ctx.message.mentions[0].id
-    elif args:
-        match = re.search(r'\d+', args)
-        if match: id_m = int(match.group())
-
+    elif ctx.message.mentions: id_m = ctx.message.mentions[0].id
     if id_m:
         bot.mock_target = id_m
-        user = bot.get_user(id_m) or await bot.fetch_user(id_m)
-        await ctx.send(ui("31", "MOCK ENABLED", f"Mocking: [1;31m{user.name}[0m"), delete_after=5)
-    else:
-        await ctx.send(ui("31", "ERROR", "Reply to a user or mention them to mock."), delete_after=3)
+        await ctx.send(ui_box("Mock", f"[1;31mTargeting:[0m {id_m}"), delete_after=5)
 
 @bot.command()
 async def uwu(ctx, *, args=None):
@@ -241,54 +237,55 @@ async def uwu(ctx, *, args=None):
     if ctx.message.reference:
         ref = await ctx.channel.fetch_message(ctx.message.reference.message_id)
         id_m = ref.author.id
-    elif ctx.message.mentions:
-        id_m = ctx.message.mentions[0].id
-    elif args:
-        match = re.search(r'\d+', args)
-        if match: id_m = int(match.group())
+    elif ctx.message.mentions: id_m = ctx.message.mentions[0].id
     if id_m:
         bot.uwu_target = id_m
-        user = bot.get_user(id_m) or await bot.fetch_user(id_m)
-        await ctx.send(ui("35", "UWU TARGET", f"Targeting: [1;35m{user.name}[0m"), delete_after=5)
+        await ctx.send(ui_box("Uwu", f"[1;35mTargeting:[0m {id_m}"), delete_after=5)
 
-@bot.command()
-async def afk(ctx, *, reason="Away"):
-    bot.afk_reason = reason
-    bot.afk_log = []
-    await ctx.send(ui("33", "AFK", f"Status: [1;33mENABLED[0m\nReason: {reason}"), delete_after=5)
-
-@bot.command()
-async def afklog(ctx):
-    if not bot.afk_log:
-        return await ctx.send(ui("34", "AFK LOG", "No pings recorded."), delete_after=5)
-    history = "\n".join(bot.afk_log[-10:])
-    await ctx.send(ui("34", "AFK LOG", history), delete_after=15)
-
-# ─── HELP & CORE ───
+# ─── STATUS & HELP ───
 
 @bot.command()
 async def help(ctx, cat=None):
     if not cat:
-        body = "[1;34m» ,help status[0m\n[1;35m» ,help social[0m\n[1;31m» ,help utility[0m"
-        return await ctx.send(ui("37", "MAIN MENU", body), delete_after=6)
+        body = (
+            "[1;37mStatus  [1;31m|[0m [1;34mRPC & AFK commands[0m\n"
+            "[1;37mSocial  [1;31m|[0m [1;34mReact & Troll commands[0m\n"
+            "[1;37mUtility [1;31m|[0m [1;34mMisc & MDM commands[0m"
+        )
+        return await ctx.send(ui_box("Main Menu", body), delete_after=15)
+    
     c = cat.lower()
     if c == "status":
-        body = "[1;30m▸[0m `,rpc [m] [t]`   [1;30m▸ `,streaming [t]`\n[1;30m▸ `,afk [r]`       [1;30m▸ `,dot [mode]`\n[1;30m▸ `,afklog`"
-        await ctx.send(ui("34", "STATUS", body), delete_after=8)
+        body = "[1;30m▸[0m `,rpc` `,streaming` `,afk` `,dot`"
+        await ctx.send(ui_box("Status", body), delete_after=10)
     elif c == "social":
-        body = "[1;30m▸[0m `,ar @u [e]`  [1;30m▸ `,mr [e]`\n[1;30m▸ `,stopreact`  [1;30m▸ `,reactlog`\n[1;30m▸ `,uwu @u`      [1;30m▸ `,mock @u`"
-        await ctx.send(ui("35", "SOCIAL", body), delete_after=8)
+        body = "[1;30m▸[0m `,ar` `,mr` `,sr` `,rl` `,uwu` `,mock`"
+        await ctx.send(ui_box("Social", body), delete_after=10)
     elif c == "utility":
-        body = "[1;30m▸[0m `,spam [n] [t]` [1;30m▸ `,purge [n]`\n[1;30m▸ `,stop`         [1;30m▸ `,ping`"
-        await ctx.send(ui("31", "UTILITY", body), delete_after=8)
+        body = "[1;30m▸[0m `,spam` `,purge` `,ping` `,mdm`"
+        await ctx.send(ui_box("Utility", body), delete_after=10)
+
+@bot.command()
+async def afk(ctx, *, reason="Away"):
+    bot.afk_reason = reason
+    await ctx.send(ui_box("AFK", f"[1;33mREASON:[0m {reason}", "Status: Enabled"), delete_after=5)
+
+@bot.command()
+async def rpc(ctx, mode, *, text):
+    m = mode.lower()
+    if m == "play": act = discord.Game(name=text)
+    elif m == "listen": act = discord.Activity(type=discord.ActivityType.listening, name=text)
+    elif m == "watch": act = discord.Activity(type=discord.ActivityType.watching, name=text)
+    else: return
+    await bot.change_presence(activity=act)
+    await ctx.send(ui_box("Presence", f"[1;36m{m.upper()}ING[0m | [1;37m{text}[0m"), delete_after=3)
 
 @bot.command()
 async def stop(ctx):
     bot.spamming = False
     bot.targets = {}; bot.mock_target = bot.uwu_target = bot.afk_reason = None
-    await bot.change_presence(activity=None)
-    await ctx.send(ui("31", "HALT", "All tasks killed."), delete_after=3)
+    await ctx.send(ui_box("Halt", "[1;31mALL SYSTEMS STOPPED[0m"), delete_after=3)
 
 if __name__ == "__main__":
     Thread(target=run_flask).start()
-    bot.run(os.getenv("DISCORD_TOKEN"))
+    bot.run(os.getenv("DISCORD_TOK
