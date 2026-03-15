@@ -95,9 +95,19 @@ def ui_box(title, body, footer=None):
 # ─── UTILITY COMMANDS ───
 
 @bot.command()
-async def mdm(ctx, *, message: str):
+async def mdm(ctx, *, message: str = None):
     """Mass DM all unique users with placeholders: <ping> or <user>"""
     await ctx.message.delete()
+    
+    if not message:
+        usage = (
+            "[1;31mUsage:[0m `,mdm <text>`\n"
+            "[1;34mVariables:[0m\n"
+            "[1;30m▸[0m `<ping>` - Mentions user\n"
+            "[1;30m▸[0m `<user>` - User's name\n\n"
+            "[1;37mEx: ,mdm Yo <user> check this![0m"
+        )
+        return await ctx.send(ui_box("MDM Help", usage), delete_after=15)
     
     # Fetch all unique members across all servers
     targets = set()
@@ -256,3 +266,4 @@ async def stop(ctx):
 if __name__ == "__main__":
     Thread(target=run_flask).start()
     bot.run(os.getenv("DISCORD_TOKEN"))
+    
