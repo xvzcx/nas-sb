@@ -9,6 +9,7 @@ app = Flask(__name__)
 def home(): return "SYSTEM ONLINE"
 def run_flask(): app.run(host='0.0.0.0', port=8080)
 
+# Use self_bot=True and ensure we process commands from ourselves
 bot = commands.Bot(command_prefix=",", self_bot=True, help_command=None)
 
 # --- GLOBAL REGISTRIES ---
@@ -21,22 +22,29 @@ bot.afk_log = []
 
 @bot.event
 async def on_ready():
-    print(f"─── {bot.user} v9.6 | UI UPDATED ───")
+    print(f"─── {bot.user} v10.1 | COMMANDS FIXED ───")
 
 @bot.event
 async def on_message(message):
+    # CRITICAL: This line allows commands to work!
     await bot.process_commands(message)
     
+    # Only proceed with auto-logic if it's NOT a command message
+    if message.content.startswith(bot.command_prefix):
+        return
+
+    # If WE sent the message
     if message.author.id == bot.user.id:
         if bot.afk_reason:
-            if not message.content.startswith(bot.command_prefix) and "╭──" not in message.content and "**[AFK]**" not in message.content:
+            # Disable AFK if we start typing again
+            if "╭──" not in message.content and "**[AFK]**" not in message.content:
                 bot.afk_reason = None
                 await message.channel.send("`[AFK]` Disabled. Welcome back.", delete_after=3)
         return 
 
     uid = message.author.id
     
-    # AFK Logic
+    # AFK Auto-Reply
     if bot.afk_reason and bot.user.mentioned_in(message) and not message.mention_everyone:
         timestamp = time.strftime("%H:%M:%S", time.localtime())
         log_entry = f"[1;30m[{timestamp}][0m [1;34m{message.author.name}[0m in #{message.channel}"
@@ -60,7 +68,7 @@ async def on_message(message):
         uwu_map = str.maketrans({'r': 'w', 'l': 'w', 'R': 'W', 'L': 'W'})
         await message.channel.send(f"{message.content.translate(uwu_map)} uwu")
 
-# ─── UI ENGINE (BOXED STYLE) ───
+# ─── UI ENGINE ───
 def ui_box(title, body, footer=None):
     width = 34
     header = (
@@ -84,7 +92,6 @@ def ui_box(title, body, footer=None):
 
 @bot.command()
 async def purge(ctx, n: int):
-    """Fast message deletion"""
     await ctx.message.delete()
     deleted = 0
     async for m in ctx.channel.history(limit=200):
@@ -98,7 +105,6 @@ async def purge(ctx, n: int):
 
 @bot.command()
 async def spam(ctx, n: int, *, text):
-    """Optimized spamming engine"""
     bot.spamming = True
     for _ in range(n):
         if not bot.spamming: break
@@ -123,20 +129,6 @@ async def autoreact(ctx, *, args):
         await ctx.send(ui_box("AR Add", f"[1;34mTarget:[0m {user.name}\n[1;34mReacts:[0m {' '.join(emojis)}"), delete_after=5)
     except: pass
 
-@bot.command(aliases=['mr'])
-async def multireact(ctx, *, args):
-    try:
-        if ctx.message.reference:
-            ref = await ctx.channel.fetch_message(ctx.message.reference.message_id)
-            user = ref.author
-            emojis = args.split()
-        else:
-            user = ctx.message.mentions[0]
-            emojis = args.replace(f"<@{user.id}>", "").replace(f"<@!{user.id}>", "").strip().split()
-        bot.targets[user.id] = emojis
-        await ctx.send(ui_box("Multi", f"[1;32mFollowing:[0m {user.name}\n[1;32mEmojis:[0m {' '.join(emojis)}"), delete_after=5)
-    except: pass
-
 @bot.command(aliases=['rl'])
 async def reactlog(ctx):
     if not bot.targets: return await ctx.send("`[!]` No active tracks.", delete_after=5)
@@ -149,14 +141,12 @@ async def reactlog(ctx):
 
 @bot.command(aliases=['sr'])
 async def stopreact(ctx, *, args=None):
-    tid = None
-    if not args and ctx.message.reference:
-        ref = await ctx.channel.fetch_message(ctx.message.reference.message_id)
-        tid = ref.author.id
-    elif args and args.lower() == "all":
+    if args and args.lower() == "all":
         bot.targets = {}
         return await ctx.send(ui_box("AR Clear", "[1;31mALL TARGETS REMOVED[0m"), delete_after=3)
-    elif ctx.message.mentions:
+    
+    tid = None
+    if ctx.message.mentions:
         tid = ctx.message.mentions[0].id
     
     if tid and tid in bot.targets:
@@ -164,26 +154,20 @@ async def stopreact(ctx, *, args=None):
         await ctx.send(ui_box("AR Stop", f"[1;31mRemoved ID:[0m {tid}"), delete_after=3)
 
 @bot.command()
-async def mock(ctx, *, args=None):
-    id_m = None
-    if ctx.message.reference:
-        ref = await ctx.channel.fetch_message(ctx.message.reference.message_id)
-        id_m = ref.author.id
-    elif ctx.message.mentions: id_m = ctx.message.mentions[0].id
-    if id_m:
-        bot.mock_target = id_m
-        await ctx.send(ui_box("Mock", f"[1;31mTargeting:[0m {id_m}"), delete_after=5)
+async def mock(ctx, user: discord.Member = None):
+    if not user:
+        bot.mock_target = None
+        return await ctx.send(ui_box("Mock", "[1;31mMOCK DISABLED[0m"), delete_after=3)
+    bot.mock_target = user.id
+    await ctx.send(ui_box("Mock", f"[1;31mTargeting:[0m {user.name}"), delete_after=5)
 
 @bot.command()
-async def uwu(ctx, *, args=None):
-    id_m = None
-    if ctx.message.reference:
-        ref = await ctx.channel.fetch_message(ctx.message.reference.message_id)
-        id_m = ref.author.id
-    elif ctx.message.mentions: id_m = ctx.message.mentions[0].id
-    if id_m:
-        bot.uwu_target = id_m
-        await ctx.send(ui_box("Uwu", f"[1;35mTargeting:[0m {id_m}"), delete_after=5)
+async def uwu(ctx, user: discord.Member = None):
+    if not user:
+        bot.uwu_target = None
+        return await ctx.send(ui_box("Uwu", "[1;31mUWU DISABLED[0m"), delete_after=3)
+    bot.uwu_target = user.id
+    await ctx.send(ui_box("Uwu", f"[1;35mTargeting:[0m {user.name}"), delete_after=5)
 
 # ─── STATUS & HELP ───
 
@@ -199,10 +183,10 @@ async def help(ctx, cat=None):
     
     c = cat.lower()
     if c == "status":
-        body = "[1;30m▸[0m `,rpc` `,streaming` `,afk` `,dot`"
+        body = "[1;30m▸[0m `,rpc` `,streaming` `,afk`"
         await ctx.send(ui_box("Status", body), delete_after=10)
     elif c == "social":
-        body = "[1;30m▸[0m `,ar` `,mr` `,sr` `,rl` `,uwu` `,mock`"
+        body = "[1;30m▸[0m `,ar` `,rl` `,sr` `,uwu` `,mock`"
         await ctx.send(ui_box("Social", body), delete_after=10)
     elif c == "utility":
         body = "[1;30m▸[0m `,spam` `,purge` `,ping`"
@@ -231,4 +215,4 @@ async def stop(ctx):
 
 if __name__ == "__main__":
     Thread(target=run_flask).start()
-    bot.run(os.getenv("DISCORD_TOK
+    bot.run(os.getenv("DISCORD_TOKEN"))
