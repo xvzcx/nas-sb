@@ -60,7 +60,8 @@ async def on_message(message):
 
     # TROLLING LOGIC
     if bot.mock_target == uid:
-        await message.channel.send("".join([c.upper() if i%2==0 else c.lower() for i,c in enumerate(message.content)]))
+        # Fixed: Now mocks exactly what they say
+        await message.channel.send(message.content)
     
     if bot.uwu_target == uid:
         uwu_map = str.maketrans({'r': 'w', 'l': 'w', 'R': 'W', 'L': 'W'})
@@ -215,11 +216,33 @@ async def targets(ctx):
     await reactlog(ctx)
 
 @bot.command()
+async def mock(ctx, *, args=None):
+    """Sticky mock: mimics every message sent by the user exactly"""
+    id_m = None
+    if ctx.message.reference:
+        ref = await ctx.channel.fetch_message(ctx.message.reference.message_id)
+        id_m = ref.author.id
+    elif ctx.message.mentions:
+        id_m = ctx.message.mentions[0].id
+    elif args:
+        match = re.search(r'\d+', args)
+        if match: id_m = int(match.group())
+
+    if id_m:
+        bot.mock_target = id_m
+        user = bot.get_user(id_m) or await bot.fetch_user(id_m)
+        await ctx.send(ui("31", "MOCK ENABLED", f"Mocking: [1;31m{user.name}[0m"), delete_after=5)
+    else:
+        await ctx.send(ui("31", "ERROR", "Reply to a user or mention them to mock."), delete_after=3)
+
+@bot.command()
 async def uwu(ctx, *, args=None):
     id_m = None
     if ctx.message.reference:
         ref = await ctx.channel.fetch_message(ctx.message.reference.message_id)
         id_m = ref.author.id
+    elif ctx.message.mentions:
+        id_m = ctx.message.mentions[0].id
     elif args:
         match = re.search(r'\d+', args)
         if match: id_m = int(match.group())
