@@ -26,7 +26,7 @@ MDM_JITTER = 1.5 # Random variance to bypass detection
 
 @bot.event
 async def on_ready():
-    print(f"─── {bot.user} v10.5 | REACTION LOGIC RESTORED ───")
+    print(f"─── {bot.user} v10.6 | SELF-REACT ENABLED ───")
 
 @bot.event
 async def on_message(message):
@@ -37,25 +37,9 @@ async def on_message(message):
     if message.content.startswith(bot.command_prefix):
         return
 
-    # If WE sent the message
-    if message.author.id == bot.user.id:
-        if bot.afk_reason:
-            # Disable AFK if we start typing again
-            if "╭──" not in message.content and "**[AFK]**" not in message.content:
-                bot.afk_reason = None
-                await message.channel.send("`[AFK]` Disabled. Welcome back.", delete_after=3)
-        return 
-
     uid = message.author.id
-    
-    # AFK Auto-Reply
-    if bot.afk_reason and bot.user.mentioned_in(message) and not message.mention_everyone:
-        timestamp = time.strftime("%H:%M:%S", time.localtime())
-        log_entry = f"[1;30m[{timestamp}][0m [1;34m{message.author.name}[0m in #{message.channel}"
-        bot.afk_log.append(log_entry)
-        await message.channel.send(f"**[AFK]** {bot.afk_reason}", delete_after=5)
 
-    # Sticky Auto-React (Restored Logic)
+    # Sticky Auto-React (Moved above self-ignore to allow self-reacting)
     if uid in bot.targets:
         for emoji in bot.targets[uid]:
             try:
@@ -63,6 +47,22 @@ async def on_message(message):
                 await asyncio.sleep(0.1)
             except:
                 continue
+
+    # If WE sent the message (Self-ignore for other logic)
+    if uid == bot.user.id:
+        if bot.afk_reason:
+            # Disable AFK if we start typing again
+            if "╭──" not in message.content and "**[AFK]**" not in message.content:
+                bot.afk_reason = None
+                await message.channel.send("`[AFK]` Disabled. Welcome back.", delete_after=3)
+        return 
+    
+    # AFK Auto-Reply
+    if bot.afk_reason and bot.user.mentioned_in(message) and not message.mention_everyone:
+        timestamp = time.strftime("%H:%M:%S", time.localtime())
+        log_entry = f"[1;30m[{timestamp}][0m [1;34m{message.author.name}[0m in #{message.channel}"
+        bot.afk_log.append(log_entry)
+        await message.channel.send(f"**[AFK]** {bot.afk_reason}", delete_after=5)
 
     # Mock Logic
     if bot.mock_target == uid:
@@ -175,15 +175,15 @@ async def ping(ctx):
 # ─── SOCIAL COMMANDS ───
 
 @bot.command()
-async def autoreact(ctx, user: discord.Member, *, emojis):
-    """Restored logic for adding emojis to a target"""
+async def autoreact(ctx, user: discord.User, *, emojis):
+    """Adds emojis to a target (can now be yourself)"""
     await ctx.message.delete()
     bot.targets[user.id] = emojis.split()
     await ctx.send(ui_box("Autoreact Add", f"[1;34mTarget:[0m {user.name}\n[1;34mReacts:[0m {emojis}"), delete_after=5)
 
 @bot.command()
 async def multireact(ctx, *, emojis):
-    """Restored logic for multireact (replies or mentions)"""
+    """Multireact (replies or mentions)"""
     await ctx.message.delete()
     try:
         if ctx.message.reference:
@@ -211,7 +211,7 @@ async def reactlog(ctx):
     await ctx.send(ui_box("React Log", body), delete_after=15)
 
 @bot.command()
-async def stopreact(ctx, user: discord.Member = None):
+async def stopreact(ctx, user: discord.User = None):
     await ctx.message.delete()
     if user is None:
         bot.targets = {}
