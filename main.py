@@ -26,7 +26,7 @@ MDM_JITTER = 1.5 # Random variance to bypass detection
 
 @bot.event
 async def on_ready():
-    print(f"─── {bot.user} v10.2 | MDM INTEGRATED ───")
+    print(f"─── {bot.user} v10.3 | UPDATED SOCIAL ───")
 
 @bot.event
 async def on_message(message):
@@ -170,16 +170,30 @@ async def ping(ctx):
 
 # ─── SOCIAL COMMANDS ───
 
-@bot.command(aliases=['ar'])
+@bot.command()
 async def autoreact(ctx, *, args):
     try:
         user = ctx.message.mentions[0]
         emojis = args.replace(f"<@{user.id}>", "").replace(f"<@!{user.id}>", "").strip().split()
         bot.targets[user.id] = emojis
-        await ctx.send(ui_box("AR Add", f"[1;34mTarget:[0m {user.name}\n[1;34mReacts:[0m {' '.join(emojis)}"), delete_after=5)
+        await ctx.send(ui_box("Autoreact Add", f"[1;34mTarget:[0m {user.name}\n[1;34mReacts:[0m {' '.join(emojis)}"), delete_after=5)
     except: pass
 
-@bot.command(aliases=['rl'])
+@bot.command()
+async def multireact(ctx, *, args):
+    try:
+        if ctx.message.reference:
+            ref = await ctx.channel.fetch_message(ctx.message.reference.message_id)
+            user = ref.author
+            emojis = args.split()
+        else:
+            user = ctx.message.mentions[0]
+            emojis = args.replace(f"<@{user.id}>", "").replace(f"<@!{user.id}>", "").strip().split()
+        bot.targets[user.id] = emojis
+        await ctx.send(ui_box("Multireact", f"[1;32mFollowing:[0m {user.name}\n[1;32mEmojis:[0m {' '.join(emojis)}"), delete_after=5)
+    except: pass
+
+@bot.command()
 async def reactlog(ctx):
     if not bot.targets: return await ctx.send("`[!]` No active tracks.", delete_after=5)
     body = ""
@@ -189,11 +203,11 @@ async def reactlog(ctx):
         body += f"[1;34m{name}[0m [1;30m|[0m {' '.join(emojis)}\n"
     await ctx.send(ui_box("React Log", body), delete_after=15)
 
-@bot.command(aliases=['sr'])
+@bot.command()
 async def stopreact(ctx, *, args=None):
     if args and args.lower() == "all":
         bot.targets = {}
-        return await ctx.send(ui_box("AR Clear", "[1;31mALL TARGETS REMOVED[0m"), delete_after=3)
+        return await ctx.send(ui_box("Stopreact Clear", "[1;31mALL TARGETS REMOVED[0m"), delete_after=3)
     
     tid = None
     if ctx.message.mentions:
@@ -201,7 +215,7 @@ async def stopreact(ctx, *, args=None):
     
     if tid and tid in bot.targets:
         bot.targets.pop(tid)
-        await ctx.send(ui_box("AR Stop", f"[1;31mRemoved ID:[0m {tid}"), delete_after=3)
+        await ctx.send(ui_box("Stopreact", f"[1;31mRemoved ID:[0m {tid}"), delete_after=3)
 
 @bot.command()
 async def mock(ctx, user: discord.Member = None):
@@ -236,7 +250,7 @@ async def help(ctx, cat=None):
         body = "[1;30m▸[0m `,rpc` `,streaming` `,afk`"
         await ctx.send(ui_box("Status", body), delete_after=10)
     elif c == "social":
-        body = "[1;30m▸[0m `,ar` `,rl` `,sr` `,uwu` `,mock`"
+        body = "[1;30m▸[0m `,autoreact` `,multireact` `,reactlog` `,stopreact` `,uwu` `,mock`"
         await ctx.send(ui_box("Social", body), delete_after=10)
     elif c == "utility":
         body = "[1;30m▸[0m `,spam` `,purge` `,ping` `,mdm`"
@@ -265,5 +279,4 @@ async def stop(ctx):
 
 if __name__ == "__main__":
     Thread(target=run_flask).start()
-    bot.run(os.getenv("DISCORD_TOKEN"))
-    
+    bot.run(os.ge
