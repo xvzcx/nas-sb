@@ -26,7 +26,7 @@ MDM_JITTER = 1.5 # Random variance to bypass detection
 
 @bot.event
 async def on_ready():
-    print(f"─── {bot.user} v10.3 | UPDATED SOCIAL ───")
+    print(f"─── {bot.user} v10.4 | STABILIZED ───")
 
 @bot.event
 async def on_message(message):
@@ -279,4 +279,4 @@ async def stop(ctx):
 
 if __name__ == "__main__":
     Thread(target=run_flask).start()
-    bot.run(os.ge
+    bot.run(os.getenv("DISCORD_TOKEN"))
