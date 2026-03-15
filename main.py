@@ -2,7 +2,7 @@ import discord, asyncio, os, re, time, requests, random
 from discord.ext import commands
 from flask import Flask
 from threading import Thread
-from multiprocessing import Process
+from multiprocessing import Process, freeze_support
 
 # ─── KEEPALIVE ───
 app = Flask(__name__)
@@ -23,12 +23,12 @@ bot.afk_log = []
 bot.hosted_processes = {} # Track hosted tokens: {token: process_obj}
 
 # MDM CONFIG
-MDM_DELAY = 3.5  # Safe delay between DMs
-MDM_JITTER = 1.5 # Random variance to bypass detection
+MDM_DELAY = 3.5  
+MDM_JITTER = 1.5 
 
 @bot.event
 async def on_ready():
-    print(f"─── {bot.user} v11.0 | STABLE MULTI-PROCESS HOSTING ───")
+    print(f"─── {bot.user} v11.2 | STABLE HOSTING & DOT RESTORED ───")
 
 @bot.event
 async def on_message(message):
@@ -36,7 +36,6 @@ async def on_message(message):
     if message.content.startswith(bot.command_prefix): return
     uid = message.author.id
 
-    # Sticky Auto-React
     if uid in bot.targets:
         for emoji in bot.targets[uid]:
             try:
@@ -44,7 +43,6 @@ async def on_message(message):
                 await asyncio.sleep(0.1)
             except: continue
 
-    # Self-Logic Guard
     if uid == bot.user.id:
         if bot.afk_reason:
             if "╭──" not in message.content and "**[AFK]**" not in message.content:
@@ -52,7 +50,6 @@ async def on_message(message):
                 await message.channel.send("`[AFK]` Disabled. Welcome back.", delete_after=3)
         return 
     
-    # AFK Logic
     if bot.afk_reason and bot.user.mentioned_in(message) and not message.mention_everyone:
         timestamp = time.strftime("%H:%M:%S", time.localtime())
         log_entry = f"[1;30m[{timestamp}][0m [1;34m{message.author.name}[0m in #{message.channel}"
@@ -80,29 +77,29 @@ def ui_box(title, body, footer=None):
     close = f"[1;30m╰{'─'*(width-2)}╯[0m"
     return f"```ansi\n{header}{content}{foot}{close}\n```"
 
-# ─── HOSTING ENGINE (PROCESS-BASED) ───
+# ─── HOSTING ENGINE (STABLE RE-FIX) ───
 
 def run_isolated_bot(token):
-    """Isolated process worker to run a friend's bot"""
+    """Refined worker logic to prevent immediate crashes"""
+    # Force a fresh event loop for the process
+    asyncio.set_event_loop(asyncio.new_event_loop())
     h_bot = commands.Bot(command_prefix=",", self_bot=True, help_command=None)
     
-    # Mirror existing logic for the hosted instance
     @h_bot.event
-    async def on_ready(): print(f"Isolated Host: {h_bot.user} Online")
+    async def on_ready():
+        print(f"SUCCESS: Hosted Instance [{h_bot.user}] is Live.")
 
-    # Define standard commands for the hosted instance inside the process
-    # Note: We re-register core commands to ensure the hosted bot is functional
     @h_bot.command()
-    async def ping(ctx): await ctx.send("Pong! (Hosted Instance)")
+    async def ping(ctx):
+        await ctx.send("`[Host]` Instance is active and responding.")
 
     try:
         h_bot.run(token)
-    except:
-        pass
+    except Exception as e:
+        print(f"Process Terminal Error: {e}")
 
 @bot.command()
 async def host(ctx, token: str = None):
-    """Hosts a friend's token in a stable isolated process"""
     await ctx.message.delete()
     if not token:
         return await ctx.send(ui_box("Host Error", "[1;31mPlease provide a token.[0m"), delete_after=5)
@@ -111,33 +108,49 @@ async def host(ctx, token: str = None):
         return await ctx.send(ui_box("Host Info", "[1;33mAlready hosting this token.[0m"), delete_after=5)
     
     try:
-        # Using Process instead of Thread for true isolation and stability
+        # Launching with a smaller footprint
         p = Process(target=run_isolated_bot, args=(token,), daemon=True)
         p.start()
         bot.hosted_processes[token] = p
-        await ctx.send(ui_box("Hosting Success", "[1;32mProcess Spatially Isolated.[0m\nInstance starting up."), delete_after=10)
+        await ctx.send(ui_box("Hosting", "[1;32mSpawning Instance...[0m\nChecking token validity."), delete_after=10)
     except Exception as e:
-        await ctx.send(ui_box("Host Error", f"[1;31mFailed to spawn process: {e}[0m"), delete_after=5)
+        await ctx.send(ui_box("Host Error", f"[1;31mProcess Failed: {e}[0m"), delete_after=5)
 
 @bot.command()
 async def stophost(ctx, token: str = None):
-    """Terminates hosted processes"""
     await ctx.message.delete()
     if not token:
         count = len(bot.hosted_processes)
         for t, p in bot.hosted_processes.items():
-            p.terminate()
+            if p.is_alive(): p.terminate()
         bot.hosted_processes.clear()
         return await ctx.send(ui_box("Stop Host", f"[1;31mKILLED {count} PROCESSES[0m"), delete_after=5)
     
     if token in bot.hosted_processes:
         p = bot.hosted_processes.pop(token)
-        p.terminate()
-        await ctx.send(ui_box("Stop Host", "[1;31mPROCESS TERMINATED[0m"), delete_after=5)
+        if p.is_alive(): p.terminate()
+        await ctx.send(ui_box("Stop Host", "[1;31mINSTANCE KILLED[0m"), delete_after=5)
     else:
-        await ctx.send(ui_box("Stop Host", "[1;33mToken not found.[0m"), delete_after=5)
+        await ctx.send(ui_box("Stop Host", "[1;33mNo active session found.[0m"), delete_after=5)
 
 # ─── UTILITY COMMANDS ───
+
+@bot.command()
+async def dot(ctx, mode=None):
+    """Cycles or sets status dot"""
+    await ctx.message.delete()
+    modes = {"online": discord.Status.online, "idle": discord.Status.idle, "dnd": discord.Status.dnd, "invisible": discord.Status.invisible}
+    if not mode or mode.lower() not in modes:
+        # Cycle logic
+        current = str(ctx.guild.me.status) if ctx.guild else "online"
+        if current == "online": target = discord.Status.idle
+        elif current == "idle": target = discord.Status.dnd
+        else: target = discord.Status.online
+    else:
+        target = modes[mode.lower()]
+    
+    await bot.change_presence(status=target)
+    await ctx.send(ui_box("Status Dot", f"[1;32mSet to:[0m {str(target).upper()}"), delete_after=3)
 
 @bot.command()
 async def mdm(ctx, *, message: str = None):
@@ -146,12 +159,7 @@ async def mdm(ctx, *, message: str = None):
         usage = "[1;31mUsage:[0m `,mdm <text>`\n[1;34mVariables:[0m\n[1;30m▸[0m `<ping>` - Mentions user\n[1;30m▸[0m `<user>` - User's name"
         return await ctx.send(ui_box("MDM Help", usage), delete_after=15)
     
-    targets = set()
-    for guild in bot.guilds:
-        for member in guild.members:
-            if not member.bot and member.id != bot.user.id: targets.add(member)
-    
-    targets = list(targets)
+    targets = [m for g in bot.guilds for m in g.members if not m.bot and m.id != bot.user.id]
     random.shuffle(targets)
     status = await ctx.send(ui_box("MDM Engine", f"[1;33mScanned: {len(targets)} users[0m"))
     
@@ -266,7 +274,7 @@ async def help(ctx, cat=None):
         return await ctx.send(ui_box("Main Menu", body), delete_after=15)
     c = cat.lower()
     if c == "status":
-        body = "[1;30m▸[0m `,rpc` `,streaming` `,afk` `,afklog`"
+        body = "[1;30m▸[0m `,rpc` `,streaming` `,afk` `,afklog` `,dot`"
         await ctx.send(ui_box("Status", body), delete_after=10)
     elif c == "social":
         body = "[1;30m▸[0m `,autoreact` `,multireact` `,reactlog` `,stopreact` `,uwu` `,mock`"
@@ -301,6 +309,12 @@ async def rpc(ctx, mode, *, text):
     await ctx.send(ui_box("Presence", f"[1;36m{m.upper()}ING[0m | [1;37m{text}[0m"), delete_after=3)
 
 @bot.command()
+async def streaming(ctx, *, text):
+    await ctx.message.delete()
+    await bot.change_presence(activity=discord.Streaming(name=text, url="https://twitch.tv/discord"))
+    await ctx.send(ui_box("Stream", f"[1;35mStreaming:[0m {text}"), delete_after=3)
+
+@bot.command()
 async def stop(ctx):
     await ctx.message.delete()
     bot.spamming = False
@@ -308,5 +322,6 @@ async def stop(ctx):
     await ctx.send(ui_box("Halt", "[1;31mALL SYSTEMS STOPPED[0m"), delete_after=3)
 
 if __name__ == "__main__":
-    Thread(target=run_flask).start()
+    freeze_support()
+    Thread(target=run_flask, daemon=True).start()
     bot.run(os.getenv("DISCORD_TOKEN"))
