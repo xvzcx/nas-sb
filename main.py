@@ -26,7 +26,7 @@ MDM_JITTER = 1.5 # Random variance to bypass detection
 
 @bot.event
 async def on_ready():
-    print(f"─── {bot.user} v10.6 | SELF-REACT ENABLED ───")
+    print(f"─── {bot.user} v10.7 | AFK LOG RESTORED ───")
 
 @bot.event
 async def on_message(message):
@@ -57,7 +57,7 @@ async def on_message(message):
                 await message.channel.send("`[AFK]` Disabled. Welcome back.", delete_after=3)
         return 
     
-    # AFK Auto-Reply
+    # AFK Auto-Reply & Logging
     if bot.afk_reason and bot.user.mentioned_in(message) and not message.mention_everyone:
         timestamp = time.strftime("%H:%M:%S", time.localtime())
         log_entry = f"[1;30m[{timestamp}][0m [1;34m{message.author.name}[0m in #{message.channel}"
@@ -254,7 +254,7 @@ async def help(ctx, cat=None):
     
     c = cat.lower()
     if c == "status":
-        body = "[1;30m▸[0m `,rpc` `,streaming` `,afk`"
+        body = "[1;30m▸[0m `,rpc` `,streaming` `,afk` `,afklog`"
         await ctx.send(ui_box("Status", body), delete_after=10)
     elif c == "social":
         body = "[1;30m▸[0m `,autoreact` `,multireact` `,reactlog` `,stopreact` `,uwu` `,mock`"
@@ -267,7 +267,19 @@ async def help(ctx, cat=None):
 async def afk(ctx, *, reason="Away"):
     await ctx.message.delete()
     bot.afk_reason = reason
+    bot.afk_log = [] # Reset log when starting new AFK session
     await ctx.send(ui_box("AFK", f"[1;33mREASON:[0m {reason}"), delete_after=5)
+
+@bot.command()
+async def afklog(ctx):
+    """Displays who pinged you while AFK"""
+    await ctx.message.delete()
+    if not bot.afk_log:
+        return await ctx.send(ui_box("AFK Log", "[1;30mNo pings recorded.[0m"), delete_after=10)
+    
+    # Join the last 15 logs to prevent message length issues
+    log_content = "\n".join(bot.afk_log[-15:])
+    await ctx.send(ui_box("AFK Log", log_content), delete_after=20)
 
 @bot.command()
 async def rpc(ctx, mode, *, text):
