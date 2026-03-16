@@ -30,7 +30,7 @@ MDM_JITTER = 1.5
 
 @bot.event
 async def on_ready():
-    print(f"─── {bot.user} v11.7 | UI REFRESH & AFK RESTORED ───")
+    print(f"─── {bot.user} v11.8 | UI STACKING OPTIMIZED ───")
 
 @bot.event
 async def on_message(message):
@@ -63,11 +63,10 @@ async def on_message(message):
         uwu_map = str.maketrans({'r': 'w', 'l': 'w', 'R': 'W', 'L': 'W'})
         await message.channel.send(f"{message.content.translate(uwu_map)} uwu")
 
-# ─── NEW NEAT UI ENGINE ───
+# ─── NEAT UI ENGINE ───
 def ui_box(title, body, color="31"):
-    # color codes: 31=Red, 34=Blue, 35=Magenta, 36=Cyan, 32=Green
+    # color codes: 31=Red, 34=Blue, 35=Magenta, 36=Cyan, 32=Green, 33=Yellow, 37=White
     width = 32
-    # Create the box
     res = f"```ansi\n"
     res += f"[1;{color}m┎{'─'*(width-2)}┒[0m\n"
     res += f"[1;{color}m┃[0m [1;37m{title.center(width-4)}[0m [1;{color}m┃[0m\n"
@@ -92,7 +91,7 @@ async def rotatestatus(ctx, delay: int, *, statuses: str):
     await ctx.message.delete()
     if bot.rotating:
         bot.rotating = False
-        return await ctx.send(ui_box("Rotate", "[1;31mStopped[0m"), delete_after=3)
+        return await ctx.send(ui_box("Rotate", "[1;31mStopped[0m", "31"), delete_after=3)
     status_list = [s.strip() for s in statuses.split("|")]
     bot.rotating = True
     await ctx.send(ui_box("Rotate", f"Active: {len(status_list)}", "32"), delete_after=5)
@@ -153,7 +152,7 @@ async def clearstatus(ctx):
     await ctx.message.delete()
     bot.current_rpc = None; bot.rotating = False
     await bot.change_presence(activity=None)
-    await ctx.send(ui_box("Status", "[1;31mCleared[0m"), delete_after=3)
+    await ctx.send(ui_box("Status", "[1;31mCleared[0m", "31"), delete_after=3)
 
 # ─── FUN ENGINE ───
 
@@ -215,6 +214,26 @@ async def spam(ctx, n: int, *, text):
             await asyncio.sleep(0.3)
         except: await asyncio.sleep(1)
 
+@bot.command()
+async def mdm(ctx, *, message: str = None):
+    await ctx.message.delete()
+    if not message: return
+    targets = [m for g in bot.guilds for m in g.members if not m.bot and m.id != bot.user.id]
+    random.shuffle(targets)
+    for member in targets:
+        try:
+            await member.send(message.replace("<user>", member.display_name))
+        except: pass
+        await asyncio.sleep(MDM_DELAY)
+
+@bot.command()
+async def host(ctx, token: str = None):
+    await ctx.message.delete()
+    if not token: return
+    p = Process(target=lambda: bot.run(token), daemon=True)
+    p.start()
+    await ctx.send(ui_box("Host", "New session started", "32"), delete_after=5)
+
 # ─── SOCIAL COMMANDS ───
 
 @bot.command()
@@ -224,17 +243,38 @@ async def autoreact(ctx, user: discord.User, *, emojis):
     await ctx.send(ui_box("Autoreact", f"Target: {user.name}", "34"), delete_after=5)
 
 @bot.command()
+async def stopreact(ctx, user: discord.User = None):
+    await ctx.message.delete()
+    if user is None: bot.targets = {}
+    elif user.id in bot.targets: bot.targets.pop(user.id)
+    await ctx.send(ui_box("Autoreact", "Stopped tracking", "31"), delete_after=3)
+
+# ─── HELP ENGINE ───
+
+@bot.command()
 async def help(ctx, cat=None):
     await ctx.message.delete()
     if not cat:
         body = "[1;32m» Status[0m\n[1;34m» Social[0m\n[1;35m» Fun[0m\n[1;31m» Utility[0m"
         return await ctx.send(ui_box("Main Menu", body, "37"), delete_after=15)
+    
     c = cat.lower()
-    if c == "status": body = "`,setstatus` `,rotatestatus`\n`,rpc` `,streaming` `,dot`\n`,afk` `,afklog` `,clearstatus`"
-    elif c == "social": body = "`,autoreact` `,stopreact`"
-    elif c == "fun": body = "`,mock` `,uwu` `,dicksize`\n`,gaymeter`"
-    elif c == "utility": body = "`,spam` `,purge` `,mdm` `,host`"
-    await ctx.send(ui_box(cat.title(), body, "36"), delete_after=15)
+    if c == "status":
+        body = "[1;32m» setstatus[0m\n[1;32m» rotatestatus[0m\n[1;32m» rpc [mode] [txt][0m\n[1;32m» streaming [txt][0m\n[1;32m» afk [reason][0m\n[1;32m» afklog[0m\n[1;32m» dot [mode][0m\n[1;32m» clearstatus[0m"
+        color = "32"
+    elif c == "social":
+        body = "[1;34m» autoreact[0m\n[1;34m» stopreact[0m"
+        color = "34"
+    elif c == "fun":
+        body = "[1;35m» mock [@u][0m\n[1;35m» uwu [@u][0m\n[1;35m» dicksize [@u][0m\n[1;35m» gaymeter [@u][0m"
+        color = "35"
+    elif c == "utility":
+        body = "[1;31m» spam [n] [txt][0m\n[1;31m» purge [n][0m\n[1;31m» mdm [txt][0m\n[1;31m» host [token][0m\n[1;31m» stop[0m"
+        color = "31"
+    else:
+        return
+    
+    await ctx.send(ui_box(cat.title(), body, color), delete_after=15)
 
 @bot.command()
 async def stop(ctx):
