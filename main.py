@@ -28,7 +28,7 @@ MDM_JITTER = 1.5
 
 @bot.event
 async def on_ready():
-    print(f"─── {bot.user} v11.2 | STABLE HOSTING & DOT RESTORED ───")
+    print(f"─── {bot.user} v11.3 | STABLE HOSTING ENGINE ───")
 
 @bot.event
 async def on_message(message):
@@ -77,44 +77,53 @@ def ui_box(title, body, footer=None):
     close = f"[1;30m╰{'─'*(width-2)}╯[0m"
     return f"```ansi\n{header}{content}{foot}{close}\n```"
 
-# ─── HOSTING ENGINE (STABLE RE-FIX) ───
+# ─── HOSTING ENGINE (ISOLATION FIX) ───
 
 def run_isolated_bot(token):
-    """Refined worker logic to prevent immediate crashes"""
-    # Force a fresh event loop for the process
-    asyncio.set_event_loop(asyncio.new_event_loop())
-    h_bot = commands.Bot(command_prefix=",", self_bot=True, help_command=None)
-    
-    @h_bot.event
-    async def on_ready():
-        print(f"SUCCESS: Hosted Instance [{h_bot.user}] is Live.")
-
-    @h_bot.command()
-    async def ping(ctx):
-        await ctx.send("`[Host]` Instance is active and responding.")
-
+    """Deeply isolated worker to prevent main process interference"""
     try:
+        # Create a completely separate event loop
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        
+        # Initialize a clean instance without any shared references
+        h_bot = commands.Bot(command_prefix=",", self_bot=True, help_command=None)
+        
+        @h_bot.event
+        async def on_ready():
+            print(f"--- [HOST SUCCESS] {h_bot.user} is now running in an isolated process. ---")
+
+        @h_bot.command()
+        async def ping(ctx):
+            await ctx.send(f"**Isolated Instance Active.** Latency: {int(h_bot.latency * 1000)}ms")
+
         h_bot.run(token)
     except Exception as e:
-        print(f"Process Terminal Error: {e}")
+        print(f"--- [HOST CRASH] Error: {e} ---")
 
 @bot.command()
 async def host(ctx, token: str = None):
     await ctx.message.delete()
     if not token:
-        return await ctx.send(ui_box("Host Error", "[1;31mPlease provide a token.[0m"), delete_after=5)
+        return await ctx.send(ui_box("Host Error", "[1;31mMissing Token.[0m"), delete_after=5)
     
     if token in bot.hosted_processes:
-        return await ctx.send(ui_box("Host Info", "[1;33mAlready hosting this token.[0m"), delete_after=5)
+        return await ctx.send(ui_box("Host Info", "[1;33mToken already active.[0m"), delete_after=5)
     
     try:
-        # Launching with a smaller footprint
+        # Use a daemon process so it dies if the main script stops
         p = Process(target=run_isolated_bot, args=(token,), daemon=True)
         p.start()
+        
+        # Small delay to see if it immediately fails
+        await asyncio.sleep(1.5)
+        if not p.is_alive():
+            return await ctx.send(ui_box("Host Error", "[1;31mProcess died immediately.[0m\nCheck logs for details."), delete_after=10)
+            
         bot.hosted_processes[token] = p
-        await ctx.send(ui_box("Hosting", "[1;32mSpawning Instance...[0m\nChecking token validity."), delete_after=10)
+        await ctx.send(ui_box("Hosting", "[1;32mProcess Spawned.[0m\nInstance is initializing."), delete_after=10)
     except Exception as e:
-        await ctx.send(ui_box("Host Error", f"[1;31mProcess Failed: {e}[0m"), delete_after=5)
+        await ctx.send(ui_box("Host Error", f"[1;31mSpawn Failed: {e}[0m"), delete_after=5)
 
 @bot.command()
 async def stophost(ctx, token: str = None):
@@ -124,24 +133,22 @@ async def stophost(ctx, token: str = None):
         for t, p in bot.hosted_processes.items():
             if p.is_alive(): p.terminate()
         bot.hosted_processes.clear()
-        return await ctx.send(ui_box("Stop Host", f"[1;31mKILLED {count} PROCESSES[0m"), delete_after=5)
+        return await ctx.send(ui_box("Stop Host", f"[1;31mCLEARED {count} PROCESSES[0m"), delete_after=5)
     
     if token in bot.hosted_processes:
         p = bot.hosted_processes.pop(token)
         if p.is_alive(): p.terminate()
-        await ctx.send(ui_box("Stop Host", "[1;31mINSTANCE KILLED[0m"), delete_after=5)
+        await ctx.send(ui_box("Stop Host", "[1;31mPROCESS TERMINATED[0m"), delete_after=5)
     else:
-        await ctx.send(ui_box("Stop Host", "[1;33mNo active session found.[0m"), delete_after=5)
+        await ctx.send(ui_box("Stop Host", "[1;33mToken not found.[0m"), delete_after=5)
 
 # ─── UTILITY COMMANDS ───
 
 @bot.command()
 async def dot(ctx, mode=None):
-    """Cycles or sets status dot"""
     await ctx.message.delete()
     modes = {"online": discord.Status.online, "idle": discord.Status.idle, "dnd": discord.Status.dnd, "invisible": discord.Status.invisible}
     if not mode or mode.lower() not in modes:
-        # Cycle logic
         current = str(ctx.guild.me.status) if ctx.guild else "online"
         if current == "online": target = discord.Status.idle
         elif current == "idle": target = discord.Status.dnd
