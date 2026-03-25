@@ -2,15 +2,14 @@ import discord, asyncio, os, re, time, requests, random
 from discord.ext import commands
 from flask import Flask
 from threading import Thread
-from multiprocessing import Process, freeze_support
 
-# ─── KEEPALIVE ───
+# ─── KEEPALIVE ENGINE ───
 app = Flask(__name__)
 @app.route('/')
 def home(): return "SYSTEM ONLINE"
 def run_flask(): app.run(host='0.0.0.0', port=8080)
 
-# Use self_bot=True and ensure we process commands from ourselves
+# Use self_bot=True for user account tokens
 bot = commands.Bot(command_prefix=",", self_bot=True, help_command=None)
 
 # --- GLOBAL REGISTRIES ---
@@ -20,17 +19,12 @@ bot.mock_target = None
 bot.uwu_target = None
 bot.afk_reason = None
 bot.afk_log = [] 
-bot.hosted_processes = {} 
 bot.current_rpc = None 
 bot.rotating = False
 
-# MDM CONFIG
-MDM_DELAY = 3.5  
-MDM_JITTER = 1.5 
-
 @bot.event
 async def on_ready():
-    print(f"─── {bot.user} v11.8 | UI STACKING OPTIMIZED ───")
+    print(f"─── {bot.user} | Connection Established ───")
 
 @bot.event
 async def on_message(message):
@@ -38,34 +32,33 @@ async def on_message(message):
     if message.content.startswith(bot.command_prefix): return
     uid = message.author.id
 
+    # Autoreact
     if uid in bot.targets:
         for emoji in bot.targets[uid]:
-            try:
-                await message.add_reaction(emoji.strip())
-                await asyncio.sleep(0.1)
+            try: await message.add_reaction(emoji.strip())
             except: continue
 
+    # Self-logic (AFK toggle)
     if uid == bot.user.id:
-        if bot.afk_reason:
-            if "┎" not in message.content and "**[AFK]**" not in message.content:
-                bot.afk_reason = None
-                await message.channel.send("`[AFK]` Disabled. Welcome back.", delete_after=3)
+        if bot.afk_reason and "┎" not in message.content:
+            bot.afk_reason = None
+            await message.channel.send("`[AFK]` Disabled. Welcome back.", delete_after=3)
         return 
     
+    # AFK Logger
     if bot.afk_reason and bot.user.mentioned_in(message) and not message.mention_everyone:
         timestamp = time.strftime("%H:%M:%S", time.localtime())
-        log_entry = f"[1;30m[{timestamp}][0m [1;34m{message.author.name}[0m in #{message.channel}"
-        bot.afk_log.append(log_entry)
+        bot.afk_log.append(f"[1;30m[{timestamp}][0m [1;34m{message.author.name}[0m in #{message.channel}")
         await message.channel.send(f"**[AFK]** {bot.afk_reason}", delete_after=5)
 
+    # Social Mock/Uwu
     if bot.mock_target == uid: await message.channel.send(message.content)
     if bot.uwu_target == uid:
         uwu_map = str.maketrans({'r': 'w', 'l': 'w', 'R': 'W', 'L': 'W'})
         await message.channel.send(f"{message.content.translate(uwu_map)} uwu")
 
-# ─── NEAT UI ENGINE ───
+# ─── UI ENGINE ───
 def ui_box(title, body, color="31"):
-    # color codes: 31=Red, 34=Blue, 35=Magenta, 36=Cyan, 32=Green, 33=Yellow, 37=White
     width = 32
     res = f"```ansi\n"
     res += f"[1;{color}m┎{'─'*(width-2)}┒[0m\n"
@@ -73,106 +66,56 @@ def ui_box(title, body, color="31"):
     res += f"[1;{color}m┠{'─'*(width-2)}┨[0m\n"
     for line in body.split("\n"):
         res += f"[1;{color}m┃[0m {line.ljust(width-4)} [1;{color}m┃[0m\n"
-    res += f"[1;{color}m┖{'─'*(width-2)}┚[0m\n"
+    res += f"[1;{color}m┖{'─'*(width-2)}⚚[0m\n"
     res += "```"
     return res
 
-# ─── STATUS ENGINE ───
+# ─── STATUS & RPC ───
 
 @bot.command()
-async def setstatus(ctx, *, text: str):
+async def customrpc(ctx, client_id, image_name, title, *, details):
     await ctx.message.delete()
-    await bot.change_presence(activity=discord.CustomActivity(name=text))
-    bot.current_rpc = discord.CustomActivity(name=text)
-    await ctx.send(ui_box("Status", f"[1;32mSet:[0m {text}", "32"), delete_after=3)
+    try:
+        act = discord.Activity(
+            type=discord.ActivityType.playing,
+            application_id=int(client_id),
+            name=title,
+            details=details,
+            assets={'large_image': image_name, 'large_text': title}
+        )
+        bot.current_rpc = act
+        await bot.change_presence(activity=act)
+        await ctx.send(ui_box("Dev RPC", f"Status: Active\nID: {client_id}", "36"), delete_after=5)
+    except Exception as e: await ctx.send(f"Error: {e}", delete_after=5)
 
 @bot.command()
-async def rotatestatus(ctx, delay: int, *, statuses: str):
+async def streaming(ctx, title, *, details="Streaming"):
     await ctx.message.delete()
-    if bot.rotating:
-        bot.rotating = False
-        return await ctx.send(ui_box("Rotate", "[1;31mStopped[0m", "31"), delete_after=3)
-    status_list = [s.strip() for s in statuses.split("|")]
-    bot.rotating = True
-    await ctx.send(ui_box("Rotate", f"Active: {len(status_list)}", "32"), delete_after=5)
-    while bot.rotating:
-        for s in status_list:
-            if not bot.rotating: break
-            await bot.change_presence(activity=discord.CustomActivity(name=s))
-            await asyncio.sleep(delay)
+    act = discord.Streaming(name=title, details=details, url="https://twitch.tv/discord")
+    bot.current_rpc = act
+    await bot.change_presence(activity=act)
+    await ctx.send(ui_box("Stream", f"Live: {title}", "35"), delete_after=3)
 
 @bot.command()
 async def afk(ctx, *, reason="Away"):
     await ctx.message.delete()
-    bot.afk_reason = reason
-    bot.afk_log = []
-    await ctx.send(ui_box("AFK", f"Reason: {reason}\n[1;30mLogs cleared.[0m", "33"), delete_after=5)
+    bot.afk_reason = reason; bot.afk_log = []
+    await ctx.send(ui_box("AFK", f"Status: ENABLED\nReason: {reason}", "33"), delete_after=5)
 
 @bot.command()
 async def afklog(ctx):
     await ctx.message.delete()
     if not bot.afk_log: return await ctx.send(ui_box("AFK Log", "No pings found.", "33"), delete_after=10)
-    log_content = "\n".join(bot.afk_log[-10:])
-    await ctx.send(ui_box("AFK Log", log_content, "33"), delete_after=20)
-
-@bot.command()
-async def dot(ctx, mode=None):
-    await ctx.message.delete()
-    modes = {"online": discord.Status.online, "idle": discord.Status.idle, "dnd": discord.Status.dnd, "invisible": discord.Status.invisible}
-    target = modes.get(mode.lower(), discord.Status.online) if mode else discord.Status.online
-    await bot.change_presence(status=target, activity=bot.current_rpc)
-    await ctx.send(ui_box("Status Dot", f"Mode: {str(target).upper()}", "34"), delete_after=3)
-
-# ─── RPC ENGINE ───
-
-@bot.command()
-async def rpc(ctx, mode, *, text):
-    await ctx.message.delete()
-    m = mode.lower()
-    try:
-        if m == "play": act = discord.Game(name=text)
-        elif m == "listen": act = discord.Activity(type=discord.ActivityType.listening, name=text)
-        elif m == "watch": act = discord.Activity(type=discord.ActivityType.watching, name=text)
-        else: return
-        bot.current_rpc = act
-        await bot.change_presence(activity=act)
-        await ctx.send(ui_box("Presence", f"[1;36m{m.upper()}ING[0m\n{text}", "36"), delete_after=3)
-    except: pass
-
-@bot.command()
-async def streaming(ctx, *, text):
-    await ctx.message.delete()
-    act = discord.Streaming(name=text, url="https://twitch.tv/discord")
-    bot.current_rpc = act
-    await bot.change_presence(activity=act)
-    await ctx.send(ui_box("Stream", f"Live: {text}", "35"), delete_after=3)
+    await ctx.send(ui_box("AFK Log", "\n".join(bot.afk_log[-8:]), "33"), delete_after=20)
 
 @bot.command()
 async def clearstatus(ctx):
     await ctx.message.delete()
-    bot.current_rpc = None; bot.rotating = False
+    bot.current_rpc = None
     await bot.change_presence(activity=None)
-    await ctx.send(ui_box("Status", "[1;31mCleared[0m", "31"), delete_after=3)
+    await ctx.send(ui_box("Status", "Cleared", "31"), delete_after=3)
 
 # ─── FUN ENGINE ───
-
-@bot.command()
-async def mock(ctx, user: discord.Member = None):
-    await ctx.message.delete()
-    if not user:
-        bot.mock_target = None
-        return await ctx.send(ui_box("Mock", "Disabled", "31"), delete_after=3)
-    bot.mock_target = user.id
-    await ctx.send(ui_box("Mock", f"Target: {user.name}", "31"), delete_after=5)
-
-@bot.command()
-async def uwu(ctx, user: discord.Member = None):
-    await ctx.message.delete()
-    if not user:
-        bot.uwu_target = None
-        return await ctx.send(ui_box("Uwu", "Disabled", "35"), delete_after=3)
-    bot.uwu_target = user.id
-    await ctx.send(ui_box("Uwu", f"Target: {user.name}", "35"), delete_after=5)
 
 @bot.command()
 async def dicksize(ctx, user: discord.Member = None):
@@ -185,10 +128,17 @@ async def dicksize(ctx, user: discord.Member = None):
 async def gaymeter(ctx, user: discord.Member = None):
     await ctx.message.delete()
     target = user or ctx.author
-    percent = random.randint(1, 100)
-    await ctx.send(ui_box("Gay Meter", f"[1;35m{target.name}[0m\n{percent}% Gay 🏳️‍🌈", "35"))
+    p = random.randint(1, 100)
+    await ctx.send(ui_box("Gay Meter", f"[1;35m{target.name}[0m\n{p}% Gay 🏳️‍🌈", "35"))
 
-# ─── UTILITY COMMANDS ───
+@bot.command()
+async def mock(ctx, user: discord.Member = None):
+    await ctx.message.delete()
+    bot.mock_target = user.id if user else None
+    state = f"Targeting: {user.name}" if user else "Disabled"
+    await ctx.send(ui_box("Mock", state, "31"), delete_after=5)
+
+# ─── UTILITY ───
 
 @bot.command()
 async def purge(ctx, n: int):
@@ -200,92 +150,34 @@ async def purge(ctx, n: int):
                 await m.delete()
                 deleted += 1
                 if deleted >= n: break
-                await asyncio.sleep(0.01)
+                await asyncio.sleep(0.1)
             except: continue
-
-@bot.command()
-async def spam(ctx, n: int, *, text):
-    await ctx.message.delete()
-    bot.spamming = True
-    for _ in range(n):
-        if not bot.spamming: break
-        try:
-            await ctx.send(text)
-            await asyncio.sleep(0.3)
-        except: await asyncio.sleep(1)
-
-@bot.command()
-async def mdm(ctx, *, message: str = None):
-    await ctx.message.delete()
-    if not message: return
-    targets = [m for g in bot.guilds for m in g.members if not m.bot and m.id != bot.user.id]
-    random.shuffle(targets)
-    for member in targets:
-        try:
-            await member.send(message.replace("<user>", member.display_name))
-        except: pass
-        await asyncio.sleep(MDM_DELAY)
-
-@bot.command()
-async def host(ctx, token: str = None):
-    await ctx.message.delete()
-    if not token: return
-    p = Process(target=lambda: bot.run(token), daemon=True)
-    p.start()
-    await ctx.send(ui_box("Host", "New session started", "32"), delete_after=5)
-
-# ─── SOCIAL COMMANDS ───
-
-@bot.command()
-async def autoreact(ctx, user: discord.User, *, emojis):
-    await ctx.message.delete()
-    bot.targets[user.id] = emojis.split()
-    await ctx.send(ui_box("Autoreact", f"Target: {user.name}", "34"), delete_after=5)
-
-@bot.command()
-async def stopreact(ctx, user: discord.User = None):
-    await ctx.message.delete()
-    if user is None: bot.targets = {}
-    elif user.id in bot.targets: bot.targets.pop(user.id)
-    await ctx.send(ui_box("Autoreact", "Stopped tracking", "31"), delete_after=3)
-
-# ─── HELP ENGINE ───
 
 @bot.command()
 async def help(ctx, cat=None):
     await ctx.message.delete()
     if not cat:
-        body = "[1;32m» Status[0m\n[1;34m» Social[0m\n[1;35m» Fun[0m\n[1;31m» Utility[0m"
+        body = "[1;32m» Status[0m\n[1;35m» Fun[0m\n[1;31m» Utility[0m"
         return await ctx.send(ui_box("Main Menu", body, "37"), delete_after=15)
     
     c = cat.lower()
     if c == "status":
-        body = "[1;32m» setstatus[0m\n[1;32m» rotatestatus[0m\n[1;32m» rpc [mode] [txt][0m\n[1;32m» streaming [txt][0m\n[1;32m» afk [reason][0m\n[1;32m» afklog[0m\n[1;32m» dot [mode][0m\n[1;32m» clearstatus[0m"
+        body = "[1;32m» customrpc[0m\n[1;32m» streaming[0m\n[1;32m» afk [reason][0m\n[1;32m» afklog[0m\n[1;32m» clearstatus[0m"
         color = "32"
-    elif c == "social":
-        body = "[1;34m» autoreact[0m\n[1;34m» stopreact[0m"
-        color = "34"
     elif c == "fun":
-        body = "[1;35m» mock [@u][0m\n[1;35m» uwu [@u][0m\n[1;35m» dicksize [@u][0m\n[1;35m» gaymeter [@u][0m"
+        body = "[1;35m» dicksize[0m\n[1;35m» gaymeter[0m\n[1;35m» mock [@u][0m"
         color = "35"
     elif c == "utility":
-        body = "[1;31m» spam [n] [txt][0m\n[1;31m» purge [n][0m\n[1;31m» mdm [txt][0m\n[1;31m» host [token][0m\n[1;31m» stop[0m"
+        body = "[1;31m» purge [n][0m\n[1;31m» stop[0m"
         color = "31"
-    else:
-        return
-    
+    else: return
     await ctx.send(ui_box(cat.title(), body, color), delete_after=15)
 
-@bot.command()
-async def stop(ctx):
-    await ctx.message.delete()
-    bot.spamming = False; bot.rotating = False
-    bot.targets = {}; bot.mock_target = bot.uwu_target = bot.afk_reason = None
-    await ctx.send(ui_box("Halt", "All tasks stopped", "31"), delete_after=3)
-
 if __name__ == "__main__":
-    freeze_support()
     TOKEN = os.getenv("DISCORD_TOKEN")
     if TOKEN:
         Thread(target=run_flask, daemon=True).start()
-        bot.run(TOKEN)
+        try:
+            bot.run(TOKEN, log_handler=None)
+        except discord.errors.LoginFailure:
+            print("ERROR: Invalid Discord Token.")
