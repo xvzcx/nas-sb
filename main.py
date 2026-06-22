@@ -10,11 +10,13 @@ app = Flask(__name__)
 def home(): return "SYSTEM ONLINE"
 def run_flask(): app.run(host='0.0.0.0', port=8080)
 
-# FORCE INTENTS (Required for message reading/commands)
-intents = discord.Intents.all()
-
-# Use self_bot=True for user account tokens
-bot = commands.Bot(command_prefix=",", self_bot=True, help_command=None, intents=intents)
+# FORCE INTENTS WITH LEGACY FALLBACK
+try:
+    intents = discord.Intents.all()
+    bot = commands.Bot(command_prefix=",", self_bot=True, help_command=None, intents=intents)
+except AttributeError:
+    # Fallback for older discord.py versions that do not have discord.Intents
+    bot = commands.Bot(command_prefix=",", self_bot=True, help_command=None)
 
 # --- GLOBAL REGISTRIES ---
 bot.targets = {}       
@@ -31,15 +33,13 @@ MDM_DELAY = 30.0  # Strict 30-second delay as requested
 
 @bot.event
 async def on_ready():
-    print(f"─── {bot.user} | Connection Established & Intents Configured ───")
+    print(f"─── {bot.user} | Connection Established & Compatibility Active ───")
 
 @bot.event
 async def on_message(message):
-    # CRITICAL SELF-BOT FIX: Force processing commands even if the message is from ourselves
+    # Force processing commands even if the message is from ourselves
     if message.author.id == bot.user.id:
         await bot.process_commands(message)
-        
-    # Still process commands from others if needed, but primarily ourselves
     elif not message.author.bot:
         await bot.process_commands(message)
 
@@ -514,5 +514,4 @@ if __name__ == "__main__":
             bot.run(TOKEN, log_handler=None)
         except discord.errors.LoginFailure:
             print("ERROR: Invalid Discord Token.")
-
 
