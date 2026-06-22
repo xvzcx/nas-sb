@@ -1,4 +1,4 @@
-
+```python
 import discord, asyncio, os, re, time, requests, random
 from discord.ext import commands
 from flask import Flask
@@ -53,7 +53,7 @@ async def on_message(message):
     # AFK Logger
     if bot.afk_reason and bot.user.mentioned_in(message) and not message.mention_everyone:
         timestamp = time.strftime("%H:%M:%S", time.localtime())
-        bot.afk_log.append(f"[1;30m[{timestamp}][0m [1;34m{message.author.name}[0m in #{message.channel}")
+        bot.afk_log.append(f"[\033[1;30m{timestamp}\033[0m] \033[1;34m{message.author.name}\033[0m in #{message.channel}")
         await message.channel.send(f"**[AFK]** {bot.afk_reason}", delete_after=5)
 
     # Social Mock/Uwu
@@ -66,12 +66,12 @@ async def on_message(message):
 def ui_box(title, body, color="31"):
     width = 32
     res = f"```ansi\n"
-    res += f"[1;{color}m┎{'─'*(width-2)}┒[0m\n"
-    res += f"[1;{color}m┃[0m [1;37m{title.center(width-4)}[0m [1;{color}m┃[0m\n"
-    res += f"[1;{color}m┠{'─'*(width-2)}┨[0m\n"
+    res += f"\033[1;{color}m┎{'─'*(width-2)}┒\033[0m\n"
+    res += f"\033[1;{color}m┃\033[0m \033[1;37m{title.center(width-4)}\033[0m \033[1;{color}m┃\033[0m\n"
+    res += f"\033[1;{color}m┠{'─'*(width-2)}┨\033[0m\n"
     for line in body.split("\n"):
-        res += f"[1;{color}m┃[0m {line.ljust(width-4)} [1;{color}m┃[0m\n"
-    res += f"[1;{color}m{'─'*(width-2)}⚚[0m\n"
+        res += f"\033[1;{color}m┃\033[0m {line.ljust(width-4)} \033[1;{color}m┃\033[0m\n"
+    res += f"\033[1;{color}m{'─'*(width-2)}⚚\033[0m\n"
     res += "```"
     return res
 
@@ -108,7 +108,7 @@ async def customrpc(ctx, client_id, image_name, title, *, details):
 @bot.command()
 async def streaming(ctx, title, *, details="Streaming"):
     await ctx.message.delete()
-    act = discord.Streaming(name=title, details=details, url="https://twitch.tv/discord")
+    act = discord.Streaming(name=title, details=details, url="[https://twitch.tv/discord](https://twitch.tv/discord)")
     bot.current_rpc = act
     await bot.change_presence(activity=act)
     await ctx.send(ui_box("Stream", f"Live: {title}", "35"), delete_after=3)
@@ -183,14 +183,14 @@ async def dicksize(ctx, user: discord.Member = None):
     await ctx.message.delete()
     target = user or ctx.author
     size = random.randint(1, 15)
-    await ctx.send(ui_box("Dick Size", f"[1;34m{target.name}[0m\n8{'='*size}D", "34"))
+    await ctx.send(ui_box("Dick Size", f"\033[1;34m{target.name}\033[0m\n8{'='*size}D", "34"))
 
 @bot.command()
 async def gaymeter(ctx, user: discord.Member = None):
     await ctx.message.delete()
     target = user or ctx.author
     p = random.randint(1, 100)
-    await ctx.send(ui_box("Gay Meter", f"[1;35m{target.name}[0m\n{p}% Gay 🏳️‍🌈", "35"))
+    await ctx.send(ui_box("Gay Meter", f"\033[1;35m{target.name}\033[0m\n{p}% Gay 🏳️‍🌈", "35"))
 
 # ─── UTILITY ENGINE ───
 
@@ -305,7 +305,7 @@ async def mdm(ctx, choice: str = None, *, message: str = None):
             targets.append(target)
             
         if not targets:
-            return await ctx.send(ui_box("MDM Status", f"No targets found.\n[1;30mSkipped {blacklisted_count} blacklisted.[0m", "31"), delete_after=5)
+            return await ctx.send(ui_box("MDM Status", f"No targets found.\n\033[1;30mSkipped {blacklisted_count} blacklisted.\033[0m", "31"), delete_after=5)
             
         random.shuffle(targets)
         total_targets = len(targets)
@@ -347,10 +347,10 @@ async def mdm(ctx, choice: str = None, *, message: str = None):
 
     # ─── PATH B: INTERACTIVE CONFIG MENU (Zero timeouts fallback) ───
     menu_body = (
-        "[1;32m[1][0m ┃ All Targets (Server/DM/Group)\n"
-        "[1;34m[2][0m ┃ Open DMs Only\n"
-        "[1;35m[3][0m ┃ Group Chats Only\n"
-        "[1;31m[4][0m ┃ Cancel Setup"
+        "\033[1;32m[1]\033[0m ┃ All Targets (Server/DM/Group)\n"
+        "\033[1;34m[2]\033[0m ┃ Open DMs Only\n"
+        "\033[1;35m[3]\033[0m ┃ Group Chats Only\n"
+        "\033[1;31m[4]\033[0m ┃ Cancel Setup"
     )
     menu_msg = await ctx.send(ui_box("MDM Target Setup", menu_body, "36"))
     
@@ -368,7 +368,7 @@ async def mdm(ctx, choice: str = None, *, message: str = None):
         if interactive_choice not in ["1", "2", "3"]:
             return await menu_msg.edit(content=ui_box("MDM Status", "Invalid Selection.", "31"), delete_after=5)
         
-        await menu_msg.edit(content=ui_box("MDM Input Msg", "Type your message below:\n[1;30m(Supports <user> / <ping>)[0m", "35"))
+        await menu_msg.edit(content=ui_box("MDM Input Msg", "Type your message below:\n\033[1;30m(Supports <user> / <ping>)\033[0m", "35"))
         
         content_msg = await bot.wait_for('message', check=check, timeout=None)
         dm_text = content_msg.content
@@ -415,7 +415,7 @@ async def mdm(ctx, choice: str = None, *, message: str = None):
             targets.append(target)
             
         if not targets:
-            return await menu_msg.edit(content=ui_box("MDM Status", f"No targets found.\n[1;30mSkipped {blacklisted_count} blacklisted.[0m", "31"), delete_after=5)
+            return await menu_msg.edit(content=ui_box("MDM Status", f"No targets found.\n\033[1;30mSkipped {blacklisted_count} blacklisted.\033[0m", "31"), delete_after=5)
             
         random.shuffle(targets)
         total_targets = len(targets)
@@ -477,21 +477,21 @@ async def stop(ctx):
 async def help(ctx, cat=None):
     await ctx.message.delete()
     if not cat:
-        body = "[1;32m» Status[0m\n[1;34m» Social[0m\n[1;35m» Fun[0m\n[1;31m» Utility[0m"
+        body = "\033[1;32m» Status\033[0m\n\033[1;34m» Social\0m\n\033[1;35m» Fun\0m\n\033[1;31m» Utility\0m"
         return await ctx.send(ui_box("Main Menu", body, "37"), delete_after=15)
     
     c = cat.lower()
     if c == "status":
-        body = "[1;32m» rpc [m] [t][0m\n[1;32m» customrpc [id] [img] [t] [d][0m\n[1;32m» streaming [t] [d][0m\n[1;32m» afk [reason][0m\n[1;32m» afklog[0m\n[1;32m» dot [mode][0m\n[1;32m» clearstatus[0m"
+        body = "\033[1;32m» rpc [m] [t]\033[0m\n\033[1;32m» customrpc [id] [img] [t] [d]\033[0m\n\033[1;32m» streaming [t] [d]\033[0m\n\033[1;32m» afk [reason]\033[0m\n\033[1;32m» afklog\033[0m\n\033[1;32m» dot [mode]\033[0m\n\033[1;32m» clearstatus\033[0m"
         color = "32"
     elif c == "social":
-        body = "[1;34m» autoreact [@u] [e][0m\n[1;34m» stopreact [@u][0m\n[1;34m» targets[0m\n[1;34m» mock [@u][0m\n[1;34m» uwu [@u][0m"
+        body = "\033[1;34m» autoreact [@u] [e]\033[0m\n\033[1;34m» stopreact [@u]\033[0m\n\033[1;34m» targets\033[0m\n\033[1;34m» mock [@u]\033[0m\n\033[1;34m» uwu [@u]\033[0m"
         color = "34"
     elif c == "fun":
-        body = "[1;35m» dicksize [@u][0m\n[1;35m» gaymeter [@u][0m"
+        body = "\033[1;35m» dicksize [@u]\033[0m\n\033[1;35m» gaymeter [@u]\033[0m"
         color = "35"
     elif c == "utility":
-        body = "[1;31m» purge [n][0m\n[1;31m» spam [n] [t][0m\n[1;31m» mdm[0m\n[1;31m» blacklist [uid][0m\n[1;31m» ping[0m\n[1;31m» stop[0m"
+        body = "\033[1;31m» purge [n]\033[0m\n\033[1;31m» spam [n] [t]\033[0m\n\033[1;31m» mdm\033[0m\n\033[1;31m» blacklist [uid]\033[0m\n\033[1;31m» ping\033[0m\n\033[1;31m» stop\033[0m"
         color = "31"
     else: return
     await ctx.send(ui_box(cat.title(), body, color), delete_after=15)
