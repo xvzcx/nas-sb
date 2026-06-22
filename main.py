@@ -20,6 +20,10 @@ bot.uwu_target = None
 bot.afk_reason = None
 bot.afk_log = [] 
 bot.current_rpc = None 
+bot.blacklist = set() # Store blacklisted User IDs / Channel IDs
+
+# MDM CONFIG
+MDM_DELAY = 30.0  # Strict 30-second delay as requested
 
 @bot.event
 async def on_ready():
@@ -39,8 +43,6 @@ async def on_message(message):
 
     # Self-logic (AFK toggle)
     if uid == bot.user.id:
-        # FIX: Check if the message is an automated AFK response or UI box
-        # If it is NOT a system message, we disable AFK
         is_automated = "┎" in message.content or "**[AFK]**" in message.content or "Status: ENABLED" in message.content
         if bot.afk_reason and not is_automated:
             bot.afk_reason = None
@@ -68,7 +70,7 @@ def ui_box(title, body, color="31"):
     res += f"[1;{color}m┠{'─'*(width-2)}┨[0m\n"
     for line in body.split("\n"):
         res += f"[1;{color}m┃[0m {line.ljust(width-4)} [1;{color}m┃[0m\n"
-    res += f"[1;{color}m┖{'─'*(width-2)}⚚[0m\n"
+    res += f"[1;{color}m{'─'*(width-2)}⚚[0m\n"
     res += "```"
     return res
 
@@ -216,6 +218,153 @@ async def spam(ctx, n: int, *, text):
         except: await asyncio.sleep(1)
 
 @bot.command()
+async def blacklist(ctx, uid: str = None):
+    """View MDM blacklist log or add/remove a user ID from skipping"""
+    await ctx.message.delete()
+    if uid is None:
+        if not bot.blacklist:
+            return await ctx.send(ui_box("Blacklist", "No blacklisted targets", "31"), delete_after=5)
+        
+        # Resolve user display names safely
+        resolved_names = []
+        for b_id in bot.blacklist:
+            user = bot.get_user(b_id)
+            if not user:
+                try:
+                    user = await bot.fetch_user(b_id)
+                except:
+                    user = None
+            name = user.name if user else f"Unknown ({b_id})"
+            resolved_names.append(f"» {name}")
+            
+        return await ctx.send(ui_box("Blacklist Log", "\n".join(resolved_names), "31"), delete_after=15)
+
+    try:
+        target_id = int(uid)
+    except ValueError:
+        return await ctx.send(ui_box("Error", "Invalid UID format", "31"), delete_after=5)
+
+    if target_id in bot.blacklist:
+        bot.blacklist.remove(target_id)
+        await ctx.send(ui_box("Blacklist", f"Removed ID:\n{target_id}", "32"), delete_after=5)
+    else:
+        bot.blacklist.add(target_id)
+        await ctx.send(ui_box("Blacklist", f"Added ID:\n{target_id}", "31"), delete_after=5)
+
+@bot.command()
+async def mdm(ctx):
+    """Launches an interactive setup menu for Mass DM configurations with blacklist support"""
+    await ctx.message.delete()
+    
+    menu_body = (
+        "[1;32m[1][0m ┃ All Targets (Server/DM/Group)\n"
+        "[1;34m[2][0m ┃ Open DMs Only\n"
+        "[1;35m[3][0m ┃ Group Chats Only\n"
+        "[1;31m[4][0m ┃ Cancel Setup"
+    )
+    menu_msg = await ctx.send(ui_box("MDM Target Setup", menu_body, "36"))
+    
+    def check(m):
+        return m.author.id == bot.user.id and m.channel.id == ctx.channel.id
+
+    try:
+        # Step 1: Get Target Choice
+        choice_msg = await bot.wait_for('message', check=check, timeout=20.0)
+        choice = choice_msg.content.strip()
+        await choice_msg.delete()
+        
+        if choice == "4" or choice.lower() == "cancel":
+            return await menu_msg.edit(content=ui_box("MDM Status", "Process Cancelled.", "31"), delete_after=5)
+            
+        if choice not in ["1", "2", "3"]:
+            return await menu_msg.edit(content=ui_box("MDM Status", "Invalid Selection.", "31"), delete_after=5)
+        
+        # Step 2: Get DM Message Body
+        await menu_msg.edit(content=ui_box("MDM Input Msg", "Type your message below:\n[1;30m(Supports <user> / <ping>)[0m", "35"))
+        
+        content_msg = await bot.wait_for('message', check=check, timeout=40.0)
+        dm_text = content_msg.content
+        await content_msg.delete()
+        
+        # Step 3: Fetch and Filter Targets
+        targets_dict = {} # Deduplicate targets by ID
+        
+        # Fetch Server Members
+        server_members = []
+        if choice == "1":
+            for g in bot.guilds:
+                for member in g.members:
+                    if not member.bot and member.id != bot.user.id:
+                        server_members.append(member)
+            # Add friends
+            friends_list = bot.friends if hasattr(bot, 'friends') else (bot.user.friends if hasattr(bot.user, 'friends') else [])
+            for friend in friends_list:
+                if not friend.bot:
+                    targets_dict[friend.id] = friend
+
+        # Gather targets based on choice
+        if choice == "1": # All
+            for m in server_members:
+                targets_dict[m.id] = m
+            for c in bot.private_channels:
+                if isinstance(c, discord.DMChannel) and c.recipient:
+                    if not c.recipient.bot and c.recipient.id != bot.user.id:
+                        targets_dict[c.recipient.id] = c.recipient
+                elif isinstance(c, discord.GroupChannel):
+                    targets_dict[c.id] = c
+                    
+        elif choice == "2": # Open DMs
+            for c in bot.private_channels:
+                if isinstance(c, discord.DMChannel) and c.recipient:
+                    if not c.recipient.bot and c.recipient.id != bot.user.id:
+                        targets_dict[c.recipient.id] = c.recipient
+                        
+        elif choice == "3": # Group Chats
+            for c in bot.private_channels:
+                if isinstance(c, discord.GroupChannel):
+                    targets_dict[c.id] = c
+            
+        # Filter Out Blacklisted Recipients / Group Chats
+        targets = []
+        blacklisted_count = 0
+        for t_id, target in targets_dict.items():
+            if t_id in bot.blacklist:
+                blacklisted_count += 1
+                continue
+            targets.append(target)
+            
+        if not targets:
+            return await menu_msg.edit(content=ui_box("MDM Status", f"No targets found.\n[1;30mSkipped {blacklisted_count} blacklisted.[0m", "31"), delete_after=5)
+            
+        random.shuffle(targets)
+        await menu_msg.edit(content=ui_box("MDM Initialized", f"Dispatching: {len(targets)} targets\nBlacklist Skipped: {blacklisted_count}\nDelay: 30s", "32"))
+        
+        # Step 4: Dispatch Phase with strict 30-second delay
+        sent, failed = 0, 0
+        for index, member in enumerate(targets):
+            try:
+                # Resolve details for user display or channel name
+                if isinstance(member, discord.GroupChannel):
+                    personalized = dm_text.replace("<ping>", "").replace("<user>", member.name or "Group Chat")
+                else:
+                    personalized = dm_text.replace("<ping>", member.mention).replace("<user>", member.display_name if hasattr(member, 'display_name') else member.name)
+                
+                await member.send(personalized)
+                sent += 1
+                await menu_msg.edit(content=ui_box("MDM Active", f"Sent: {sent}\nFailed: {failed}\nBlacklisted: {blacklisted_count}", "32"))
+            except:
+                failed += 1
+                
+            # Only wait if it's not the final target in the batch
+            if index < len(targets) - 1:
+                await asyncio.sleep(MDM_DELAY)
+            
+        await menu_msg.edit(content=ui_box("MDM Complete", f"Success: {sent}\nFailed: {failed}\nBlacklist Skipped: {blacklisted_count}", "32"), delete_after=15)
+        
+    except asyncio.TimeoutError:
+        await menu_msg.edit(content=ui_box("MDM Status", "Process timed out.", "31"), delete_after=5)
+
+@bot.command()
 async def ping(ctx):
     await ctx.message.delete()
     ms = round(bot.latency * 1000)
@@ -248,7 +397,7 @@ async def help(ctx, cat=None):
         body = "[1;35m» dicksize [@u][0m\n[1;35m» gaymeter [@u][0m"
         color = "35"
     elif c == "utility":
-        body = "[1;31m» purge [n][0m\n[1;31m» spam [n] [t][0m\n[1;31m» ping[0m\n[1;31m» stop[0m"
+        body = "[1;31m» purge [n][0m\n[1;31m» spam [n] [t][0m\n[1;31m» mdm[0m\n[1;31m» blacklist [uid][0m\n[1;31m» ping[0m\n[1;31m» stop[0m"
         color = "31"
     else: return
     await ctx.send(ui_box(cat.title(), body, color), delete_after=15)
