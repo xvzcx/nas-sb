@@ -10,8 +10,11 @@ app = Flask(__name__)
 def home(): return "SYSTEM ONLINE"
 def run_flask(): app.run(host='0.0.0.0', port=8080)
 
+# FORCE INTENTS (Required for message reading/commands)
+intents = discord.Intents.all()
+
 # Use self_bot=True for user account tokens
-bot = commands.Bot(command_prefix=",", self_bot=True, help_command=None)
+bot = commands.Bot(command_prefix=",", self_bot=True, help_command=None, intents=intents)
 
 # --- GLOBAL REGISTRIES ---
 bot.targets = {}       
@@ -28,11 +31,18 @@ MDM_DELAY = 30.0  # Strict 30-second delay as requested
 
 @bot.event
 async def on_ready():
-    print(f"─── {bot.user} | Connection Established ───")
+    print(f"─── {bot.user} | Connection Established & Intents Configured ───")
 
 @bot.event
 async def on_message(message):
-    await bot.process_commands(message)
+    # CRITICAL SELF-BOT FIX: Force processing commands even if the message is from ourselves
+    if message.author.id == bot.user.id:
+        await bot.process_commands(message)
+        
+    # Still process commands from others if needed, but primarily ourselves
+    elif not message.author.bot:
+        await bot.process_commands(message)
+
     if message.content.startswith(bot.command_prefix): return
     uid = message.author.id
 
@@ -108,7 +118,7 @@ async def customrpc(ctx, client_id, image_name, title, *, details):
 @bot.command()
 async def streaming(ctx, title, *, details="Streaming"):
     await ctx.message.delete()
-    act = discord.Streaming(name=title, details=details, url="[https://twitch.tv/discord](https://twitch.tv/discord)")
+    act = discord.Streaming(name=title, details=details, url="https://twitch.tv/discord")
     bot.current_rpc = act
     await bot.change_presence(activity=act)
     await ctx.send(ui_box("Stream", f"Live: {title}", "35"), delete_after=3)
