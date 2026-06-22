@@ -1,3 +1,4 @@
+```python
 import discord, asyncio, os, re, time, requests, random
 from discord.ext import commands
 from flask import Flask
@@ -252,57 +253,27 @@ async def blacklist(ctx, uid: str = None):
         await ctx.send(ui_box("Blacklist", f"Added ID:\n{target_id}", "31"), delete_after=5)
 
 @bot.command()
-async def mdm(ctx):
-    """Launches an interactive setup menu for Mass DM configurations with blacklist support"""
+async def mdm(ctx, choice: str = None, *, message: str = None):
+    """Launches an interactive setup menu OR processes direct mass DMs immediately"""
     await ctx.message.delete()
     
-    menu_body = (
-        "[1;32m[1][0m ┃ All Targets (Server/DM/Group)\n"
-        "[1;34m[2][0m ┃ Open DMs Only\n"
-        "[1;35m[3][0m ┃ Group Chats Only\n"
-        "[1;31m[4][0m ┃ Cancel Setup"
-    )
-    menu_msg = await ctx.send(ui_box("MDM Target Setup", menu_body, "36"))
-    
-    def check(m):
-        return m.author.id == bot.user.id and m.channel.id == ctx.channel.id
-
-    try:
-        # Step 1: Get Target Choice
-        choice_msg = await bot.wait_for('message', check=check, timeout=20.0)
-        choice = choice_msg.content.strip()
-        await choice_msg.delete()
+    # ─── PATH A: DIRECT EXECUTION (Instant, bypasses menus entirely) ───
+    if choice in ["1", "2", "3"] and message is not None:
+        dm_text = message
+        targets_dict = {}
         
-        if choice == "4" or choice.lower() == "cancel":
-            return await menu_msg.edit(content=ui_box("MDM Status", "Process Cancelled.", "31"), delete_after=5)
-            
-        if choice not in ["1", "2", "3"]:
-            return await menu_msg.edit(content=ui_box("MDM Status", "Invalid Selection.", "31"), delete_after=5)
-        
-        # Step 2: Get DM Message Body
-        await menu_msg.edit(content=ui_box("MDM Input Msg", "Type your message below:\n[1;30m(Supports <user> / <ping>)[0m", "35"))
-        
-        content_msg = await bot.wait_for('message', check=check, timeout=40.0)
-        dm_text = content_msg.content
-        await content_msg.delete()
-        
-        # Step 3: Fetch and Filter Targets
-        targets_dict = {} # Deduplicate targets by ID
-        
-        # Fetch Server Members
+        # Gather Target Data
         server_members = []
         if choice == "1":
             for g in bot.guilds:
                 for member in g.members:
                     if not member.bot and member.id != bot.user.id:
                         server_members.append(member)
-            # Add friends
             friends_list = bot.friends if hasattr(bot, 'friends') else (bot.user.friends if hasattr(bot.user, 'friends') else [])
             for friend in friends_list:
                 if not friend.bot:
                     targets_dict[friend.id] = friend
 
-        # Gather targets based on choice
         if choice == "1": # All
             for m in server_members:
                 targets_dict[m.id] = m
@@ -324,7 +295,117 @@ async def mdm(ctx):
                 if isinstance(c, discord.GroupChannel):
                     targets_dict[c.id] = c
             
-        # Filter Out Blacklisted Recipients / Group Chats
+        # Blacklist Filtering
+        targets = []
+        blacklisted_count = 0
+        for t_id, target in targets_dict.items():
+            if t_id in bot.blacklist:
+                blacklisted_count += 1
+                continue
+            targets.append(target)
+            
+        if not targets:
+            return await ctx.send(ui_box("MDM Status", f"No targets found.\n[1;30mSkipped {blacklisted_count} blacklisted.[0m", "31"), delete_after=5)
+            
+        random.shuffle(targets)
+        total_targets = len(targets)
+        status_msg = await ctx.send(ui_box("MDM Initialized", f"Dispatching: {total_targets} targets\nBlacklist Skipped: {blacklisted_count}\nDelay: 30s", "32"))
+        
+        # Dispatch Phase
+        sent, failed = 0, 0
+        for index, member in enumerate(targets):
+            current_count = index + 1
+            try:
+                if isinstance(member, discord.GroupChannel):
+                    personalized = dm_text.replace("<ping>", "").replace("<user>", member.name or "Group Chat")
+                else:
+                    personalized = dm_text.replace("<ping>", member.mention).replace("<user>", member.display_name if hasattr(member, 'display_name') else member.name)
+                
+                await member.send(personalized)
+                sent += 1
+            except:
+                failed += 1
+                
+            progress_body = (
+                f"Progress: ({current_count}/{total_targets})\n"
+                f"Success: {sent}\n"
+                f"Failed: {failed}\n"
+                f"Blacklisted: {blacklisted_count}"
+            )
+            await status_msg.edit(content=ui_box("MDM Active", progress_body, "32"))
+                
+            if index < len(targets) - 1:
+                await asyncio.sleep(MDM_DELAY)
+            
+        final_body = (
+            f"Total Processed: ({total_targets}/{total_targets})\n"
+            f"Success: {sent}\n"
+            f"Failed: {failed}\n"
+            f"Blacklist Skipped: {blacklisted_count}"
+        )
+        return await status_msg.edit(content=ui_box("MDM Complete", final_body, "32"), delete_after=15)
+
+    # ─── PATH B: INTERACTIVE CONFIG MENU (Zero timeouts fallback) ───
+    menu_body = (
+        "[1;32m[1][0m ┃ All Targets (Server/DM/Group)\n"
+        "[1;34m[2][0m ┃ Open DMs Only\n"
+        "[1;35m[3][0m ┃ Group Chats Only\n"
+        "[1;31m[4][0m ┃ Cancel Setup"
+    )
+    menu_msg = await ctx.send(ui_box("MDM Target Setup", menu_body, "36"))
+    
+    def check(m):
+        return m.channel.id == ctx.channel.id and m.author.id == ctx.author.id
+
+    try:
+        choice_msg = await bot.wait_for('message', check=check, timeout=None)
+        interactive_choice = choice_msg.content.strip()
+        await choice_msg.delete()
+        
+        if interactive_choice == "4" or interactive_choice.lower() == "cancel":
+            return await menu_msg.edit(content=ui_box("MDM Status", "Process Cancelled.", "31"), delete_after=5)
+            
+        if interactive_choice not in ["1", "2", "3"]:
+            return await menu_msg.edit(content=ui_box("MDM Status", "Invalid Selection.", "31"), delete_after=5)
+        
+        await menu_msg.edit(content=ui_box("MDM Input Msg", "Type your message below:\n[1;30m(Supports <user> / <ping>)[0m", "35"))
+        
+        content_msg = await bot.wait_for('message', check=check, timeout=None)
+        dm_text = content_msg.content
+        await content_msg.delete()
+        
+        # Filter and compile targets
+        targets_dict = {}
+        server_members = []
+        if interactive_choice == "1":
+            for g in bot.guilds:
+                for member in g.members:
+                    if not member.bot and member.id != bot.user.id:
+                        server_members.append(member)
+            friends_list = bot.friends if hasattr(bot, 'friends') else (bot.user.friends if hasattr(bot.user, 'friends') else [])
+            for friend in friends_list:
+                if not friend.bot:
+                    targets_dict[friend.id] = friend
+
+        if interactive_choice == "1":
+            for m in server_members:
+                targets_dict[m.id] = m
+            for c in bot.private_channels:
+                if isinstance(c, discord.DMChannel) and c.recipient:
+                    if not c.recipient.bot and c.recipient.id != bot.user.id:
+                        targets_dict[c.recipient.id] = c.recipient
+                elif isinstance(c, discord.GroupChannel):
+                    targets_dict[c.id] = c
+        elif interactive_choice == "2":
+            for c in bot.private_channels:
+                if isinstance(c, discord.DMChannel) and c.recipient:
+                    if not c.recipient.bot and c.recipient.id != bot.user.id:
+                        targets_dict[c.recipient.id] = c.recipient
+        elif interactive_choice == "3":
+            for c in bot.private_channels:
+                if isinstance(c, discord.GroupChannel):
+                    targets_dict[c.id] = c
+            
         targets = []
         blacklisted_count = 0
         for t_id, target in targets_dict.items():
@@ -337,13 +418,14 @@ async def mdm(ctx):
             return await menu_msg.edit(content=ui_box("MDM Status", f"No targets found.\n[1;30mSkipped {blacklisted_count} blacklisted.[0m", "31"), delete_after=5)
             
         random.shuffle(targets)
-        await menu_msg.edit(content=ui_box("MDM Initialized", f"Dispatching: {len(targets)} targets\nBlacklist Skipped: {blacklisted_count}\nDelay: 30s", "32"))
+        total_targets = len(targets)
+        await menu_msg.edit(content=ui_box("MDM Initialized", f"Dispatching: {total_targets} targets\nBlacklist Skipped: {blacklisted_count}\nDelay: 30s", "32"))
         
-        # Step 4: Dispatch Phase with strict 30-second delay
+        # Dispatch Phase
         sent, failed = 0, 0
         for index, member in enumerate(targets):
+            current_count = index + 1
             try:
-                # Resolve details for user display or channel name
                 if isinstance(member, discord.GroupChannel):
                     personalized = dm_text.replace("<ping>", "").replace("<user>", member.name or "Group Chat")
                 else:
@@ -351,18 +433,30 @@ async def mdm(ctx):
                 
                 await member.send(personalized)
                 sent += 1
-                await menu_msg.edit(content=ui_box("MDM Active", f"Sent: {sent}\nFailed: {failed}\nBlacklisted: {blacklisted_count}", "32"))
             except:
                 failed += 1
                 
-            # Only wait if it's not the final target in the batch
+            progress_body = (
+                f"Progress: ({current_count}/{total_targets})\n"
+                f"Success: {sent}\n"
+                f"Failed: {failed}\n"
+                f"Blacklisted: {blacklisted_count}"
+            )
+            await menu_msg.edit(content=ui_box("MDM Active", progress_body, "32"))
+                
             if index < len(targets) - 1:
                 await asyncio.sleep(MDM_DELAY)
             
-        await menu_msg.edit(content=ui_box("MDM Complete", f"Success: {sent}\nFailed: {failed}\nBlacklist Skipped: {blacklisted_count}", "32"), delete_after=15)
+        final_body = (
+            f"Total Processed: ({total_targets}/{total_targets})\n"
+            f"Success: {sent}\n"
+            f"Failed: {failed}\n"
+            f"Blacklist Skipped: {blacklisted_count}"
+        )
+        await menu_msg.edit(content=ui_box("MDM Complete", final_body, "32"), delete_after=15)
         
-    except asyncio.TimeoutError:
-        await menu_msg.edit(content=ui_box("MDM Status", "Process timed out.", "31"), delete_after=5)
+    except Exception as e:
+        await menu_msg.edit(content=ui_box("MDM Error", f"An error occurred:\n{str(e)[:40]}", "31"), delete_after=5)
 
 @bot.command()
 async def ping(ctx):
@@ -410,3 +504,5 @@ if __name__ == "__main__":
             bot.run(TOKEN, log_handler=None)
         except discord.errors.LoginFailure:
             print("ERROR: Invalid Discord Token.")
+
+```
