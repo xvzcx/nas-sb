@@ -1,4 +1,4 @@
-```python
+
 import discord, asyncio, os, re, time, requests, random
 from discord.ext import commands
 from flask import Flask
